@@ -63,7 +63,7 @@ func (b *Bucket) ListMulti(prefix, delim string) (multis []*Multi, prefixes []st
 		}
 		var resp listMultiResp
 		err := b.S3.query(req, &resp)
-		if shouldRetry(err) && attempt.HasNext() {
+		if ShouldRetry(err) && attempt.HasNext() {
 			continue
 		}
 		if err != nil {
@@ -127,7 +127,7 @@ func (b *Bucket) InitMulti(key string, contType string, perm ACL) (*Multi, error
 	}
 	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(); {
 		err = b.S3.query(req, &resp)
-		if !shouldRetry(err) {
+		if !ShouldRetry(err) {
 			break
 		}
 	}
@@ -176,7 +176,7 @@ func (m *Multi) putPart(n int, r io.ReadSeeker, partSize int64, md5b64 string) (
 			return Part{}, err
 		}
 		resp, err := m.Bucket.S3.run(req, nil)
-		if shouldRetry(err) && attempt.HasNext() {
+		if ShouldRetry(err) && attempt.HasNext() {
 			continue
 		}
 		if err != nil {
@@ -247,7 +247,7 @@ func (m *Multi) ListParts() ([]Part, error) {
 		}
 		var resp listPartsResp
 		err := m.Bucket.S3.query(req, &resp)
-		if shouldRetry(err) && attempt.HasNext() {
+		if ShouldRetry(err) && attempt.HasNext() {
 			continue
 		}
 		if err != nil {
@@ -365,7 +365,7 @@ func (m *Multi) Complete(parts []Part) error {
 			payload: bytes.NewReader(data),
 		}
 		err := m.Bucket.S3.query(req, nil)
-		if shouldRetry(err) && attempt.HasNext() {
+		if ShouldRetry(err) && attempt.HasNext() {
 			continue
 		}
 		return err
@@ -400,7 +400,7 @@ func (m *Multi) Abort() error {
 			params: params,
 		}
 		err := m.Bucket.S3.query(req, nil)
-		if shouldRetry(err) && attempt.HasNext() {
+		if ShouldRetry(err) && attempt.HasNext() {
 			continue
 		}
 		return err
