@@ -192,7 +192,7 @@ func (b *Bucket) DelBucket() (err error) {
 	}
 	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(); {
 		err = b.S3.query(req, nil)
-		if !shouldRetry(err) {
+		if !ShouldRetry(err) {
 			break
 		}
 	}
@@ -253,7 +253,7 @@ func (b *Bucket) GetResponseWithHeaders(path string, headers map[string][]string
 	}
 	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(); {
 		resp, err := b.S3.run(req, nil)
-		if shouldRetry(err) && attempt.HasNext() {
+		if ShouldRetry(err) && attempt.HasNext() {
 			continue
 		}
 		if err != nil {
@@ -278,7 +278,7 @@ func (b *Bucket) Exists(path string) (exists bool, err error) {
 	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(); {
 		resp, err := b.S3.run(req, nil)
 
-		if shouldRetry(err) && attempt.HasNext() {
+		if ShouldRetry(err) && attempt.HasNext() {
 			continue
 		}
 
@@ -314,7 +314,7 @@ func (b *Bucket) Head(path string, headers map[string][]string) (*http.Response,
 
 	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(); {
 		resp, err := b.S3.run(req, nil)
-		if shouldRetry(err) && attempt.HasNext() {
+		if ShouldRetry(err) && attempt.HasNext() {
 			continue
 		}
 		if err != nil {
@@ -647,7 +647,7 @@ func (b *Bucket) List(prefix, delim, marker string, max int) (result *ListResp, 
 	result = &ListResp{}
 	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(); {
 		err = b.S3.query(req, result)
-		if !shouldRetry(err) {
+		if !ShouldRetry(err) {
 			break
 		}
 	}
@@ -708,7 +708,7 @@ func (b *Bucket) Versions(prefix, delim, keyMarker string, versionIdMarker strin
 	result = &VersionsResp{}
 	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(); {
 		err = b.S3.query(req, result)
-		if !shouldRetry(err) {
+		if !ShouldRetry(err) {
 			break
 		}
 	}
@@ -1068,7 +1068,7 @@ func buildError(r *http.Response) error {
 	return &err
 }
 
-func shouldRetry(err error) bool {
+func ShouldRetry(err error) bool {
 	if err == nil {
 		return false
 	}
