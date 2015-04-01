@@ -25,6 +25,7 @@ type Multi struct {
 	UploadId string
 }
 
+// Options that can be passed in when initiating a multipart upload.
 type MultiOptions struct {
 	SSE bool // true to require server-side encryption
 }
@@ -92,16 +93,15 @@ func (b *Bucket) ListMulti(prefix, delim string) (multis []*Multi, prefixes []st
 // Multi returns a multipart upload handler for the provided key
 // inside b. If a multipart upload exists for key, it is returned,
 // otherwise a new multipart upload is initiated with contType and perm.
-// If sse is true then server-side encryption will be required.
 func (b *Bucket) Multi(key, contType string, perm ACL) (*Multi, error) {
-	return b.MultiWithOptions(key, contType, perm, MultiOptions{})
+	return b.MultiOptions(key, contType, perm, MultiOptions{})
 }
 
 // Multi returns a multipart upload handler for the provided key
 // inside b. If a multipart upload exists for key, it is returned,
 // otherwise a new multipart upload is initiated with contType and perm.
-// If sse is true then server-side encryption will be required.
-func (b *Bucket) MultiWithOptions(key, contType string, perm ACL, options MultiOptions) (*Multi, error) {
+// Options can be used to send specific headesrs (e.g. to request Server-Side Encryption)
+func (b *Bucket) MultiOptions(key, contType string, perm ACL, options MultiOptions) (*Multi, error) {
 	multis, _, err := b.ListMulti(key, "")
 	if err != nil && !hasCode(err, "NoSuchUpload") {
 		return nil, err
@@ -111,24 +111,23 @@ func (b *Bucket) MultiWithOptions(key, contType string, perm ACL, options MultiO
 			return m, nil
 		}
 	}
-	return b.InitMultiWithOptions(key, contType, perm, options)
+	return b.InitMultiOptions(key, contType, perm, options)
 }
 
 // InitMulti initializes a new multipart upload at the provided
 // key inside b and returns a value for manipulating it.
-// If sse is true then server-side encryption will be required.
 //
 // See http://goo.gl/XP8kL for details.
 func (b *Bucket) InitMulti(key string, contType string, perm ACL) (*Multi, error) {
-	return b.InitMultiWithOptions(key, contType, perm, MultiOptions{})
+	return b.InitMultiOptions(key, contType, perm, MultiOptions{})
 }
 
 // InitMulti initializes a new multipart upload at the provided
 // key inside b and returns a value for manipulating it.
-// If sse is true then server-side encryption will be required.
+// Options can be used to send specific headesrs (e.g. to request Server-Side Encryption)
 //
 // See http://goo.gl/XP8kL for details.
-func (b *Bucket) InitMultiWithOptions(key string, contType string, perm ACL, options MultiOptions) (*Multi, error) {
+func (b *Bucket) InitMultiOptions(key string, contType string, perm ACL, options MultiOptions) (*Multi, error) {
 	headers := map[string][]string{
 		"Content-Type":   {contType},
 		"Content-Length": {"0"},
