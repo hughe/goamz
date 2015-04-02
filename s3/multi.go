@@ -134,7 +134,7 @@ func (b *Bucket) InitMultiOptions(key string, contType string, perm ACL, options
 		"x-amz-acl":      {string(perm)},
 	}
 	if options.SSE {
-		headers["x-amz-server-side-encryption"] = []string{"AES256"}
+		AddHeaderSSE(headers)
 	}
 	params := map[string][]string{
 		"uploads": {""},

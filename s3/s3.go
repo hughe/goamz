@@ -416,10 +416,15 @@ func (b *Bucket) PutReaderHeader(path string, r io.Reader, length int64, customH
 	return b.S3.query(req, nil)
 }
 
+// Adds a header value to the specified set of headers to request server-side encryption.
+func AddHeaderSSE(headers map[string][]string) {
+	headers["x-amz-server-side-encryption"] = []string{"AES256"}
+}
+
 // addHeaders adds o's specified fields to headers
 func (o Options) addHeaders(headers map[string][]string) {
 	if o.SSE {
-		headers["x-amz-server-side-encryption"] = []string{"AES256"}
+		AddHeaderSSE(headers)
 	}
 	if len(o.ContentEncoding) != 0 {
 		headers["Content-Encoding"] = []string{o.ContentEncoding}
