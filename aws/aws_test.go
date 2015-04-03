@@ -1,7 +1,12 @@
 package aws_test
 
 import (
+<<<<<<< HEAD
 	"io/ioutil"
+=======
+	"github.com/hughe/goamz/aws"
+	"github.com/motain/gocheck"
+>>>>>>> Changed paths in test files to github.com/hughe/goamz so that aws and s3 tests work properly
 	"os"
 	"strings"
 	"testing"

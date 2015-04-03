@@ -7,10 +7,17 @@ import (
 	"testing"
 	"time"
 
+<<<<<<< HEAD
 	"github.com/goamz/goamz/aws"
 	"github.com/goamz/goamz/s3"
 	"github.com/goamz/goamz/testutil"
 	. "gopkg.in/check.v1"
+=======
+	"github.com/hughe/goamz/aws"
+	"github.com/hughe/goamz/s3"
+	"github.com/hughe/goamz/testutil"
+	"github.com/motain/gocheck"
+>>>>>>> Changed paths in test files to github.com/hughe/goamz so that aws and s3 tests work properly
 )
 
 func Test(t *testing.T) {

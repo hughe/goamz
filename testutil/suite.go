@@ -2,9 +2,14 @@ package testutil
 
 import (
 	"flag"
+<<<<<<< HEAD
 
 	"github.com/goamz/goamz/aws"
 	. "gopkg.in/check.v1"
+=======
+	"github.com/hughe/goamz/aws"
+	"github.com/motain/gocheck"
+>>>>>>> Changed paths in test files to github.com/hughe/goamz so that aws and s3 tests work properly
 )
 
 // Amazon must be used by all tested packages to determine whether to

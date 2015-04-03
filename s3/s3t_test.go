@@ -1,10 +1,17 @@
 package s3_test
 
 import (
+<<<<<<< HEAD
 	"github.com/goamz/goamz/aws"
 	"github.com/goamz/goamz/s3"
 	"github.com/goamz/goamz/s3/s3test"
 	. "gopkg.in/check.v1"
+=======
+	"github.com/hughe/goamz/aws"
+	"github.com/hughe/goamz/s3"
+	"github.com/hughe/goamz/s3/s3test"
+	"github.com/motain/gocheck"
+>>>>>>> Changed paths in test files to github.com/hughe/goamz so that aws and s3 tests work properly
 )
 
 type LocalServer struct {
