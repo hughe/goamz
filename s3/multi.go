@@ -94,14 +94,14 @@ func (b *Bucket) ListMulti(prefix, delim string) (multis []*Multi, prefixes []st
 // inside b. If a multipart upload exists for key, it is returned,
 // otherwise a new multipart upload is initiated with contType and perm.
 func (b *Bucket) Multi(key, contType string, perm ACL) (*Multi, error) {
-	return b.MultiOptions(key, contType, perm, MultiOptions{})
+	return b.MultiWithOptions(key, contType, perm, MultiOptions{})
 }
 
 // Multi returns a multipart upload handler for the provided key
 // inside b. If a multipart upload exists for key, it is returned,
 // otherwise a new multipart upload is initiated with contType and perm.
 // Options can be used to send specific headesrs (e.g. to request Server-Side Encryption)
-func (b *Bucket) MultiOptions(key, contType string, perm ACL, options MultiOptions) (*Multi, error) {
+func (b *Bucket) MultiWithOptions(key, contType string, perm ACL, options MultiOptions) (*Multi, error) {
 	multis, _, err := b.ListMulti(key, "")
 	if err != nil && !hasCode(err, "NoSuchUpload") {
 		return nil, err
@@ -111,7 +111,7 @@ func (b *Bucket) MultiOptions(key, contType string, perm ACL, options MultiOptio
 			return m, nil
 		}
 	}
-	return b.InitMultiOptions(key, contType, perm, options)
+	return b.InitMultiWithOptions(key, contType, perm, options)
 }
 
 // InitMulti initializes a new multipart upload at the provided
@@ -119,7 +119,7 @@ func (b *Bucket) MultiOptions(key, contType string, perm ACL, options MultiOptio
 //
 // See http://goo.gl/XP8kL for details.
 func (b *Bucket) InitMulti(key string, contType string, perm ACL) (*Multi, error) {
-	return b.InitMultiOptions(key, contType, perm, MultiOptions{})
+	return b.InitMultiWithOptions(key, contType, perm, MultiOptions{})
 }
 
 // InitMulti initializes a new multipart upload at the provided
@@ -127,7 +127,7 @@ func (b *Bucket) InitMulti(key string, contType string, perm ACL) (*Multi, error
 // Options can be used to send specific headesrs (e.g. to request Server-Side Encryption)
 //
 // See http://goo.gl/XP8kL for details.
-func (b *Bucket) InitMultiOptions(key string, contType string, perm ACL, options MultiOptions) (*Multi, error) {
+func (b *Bucket) InitMultiWithOptions(key string, contType string, perm ACL, options MultiOptions) (*Multi, error) {
 	headers := map[string][]string{
 		"Content-Type":   {contType},
 		"Content-Length": {"0"},
