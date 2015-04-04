@@ -24,6 +24,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"net/textproto"
 	"net/url"
 	"strconv"
 	"strings"
@@ -416,9 +417,24 @@ func (b *Bucket) PutReaderHeader(path string, r io.Reader, length int64, customH
 	return b.S3.query(req, nil)
 }
 
+const sseHeaderKey = "x-amz-server-side-encryption"
+
 // Adds a header value to the specified set of headers to request server-side encryption.
 func AddHeaderSSE(headers map[string][]string) {
-	headers["x-amz-server-side-encryption"] = []string{"AES256"}
+	headers[textproto.CanonicalMIMEHeaderKey(sseHeaderKey)] = []string{"AES256"}
+}
+
+// Returns the header value for server-side encryption, or empty string if there is no SSE header.
+func GetHeaderSSE(headers map[string][]string) string {
+	// Headers returned in an HTTP response will have their key names connonicalized by the Go
+	// http library, so we MUST run the key through textproto.CanonicalMIMEHeaderKey in order
+	// to find it in the map
+	// So headers in the http request must also have been added with a cannonicalized key to find them.
+	// TODO: Change parameters in this file to use http.Header data type rather than map[string][]string
+	if val := headers[textproto.CanonicalMIMEHeaderKey(sseHeaderKey)]; len(val) > 0 {
+		return val[0]
+	}
+	return ""
 }
 
 // addHeaders adds o's specified fields to headers
@@ -897,6 +913,17 @@ func (s3 *S3) query(req *request, resp interface{}) error {
 		httpResponse, err = s3.run(req, resp)
 		if resp == nil && httpResponse != nil {
 			httpResponse.Body.Close()
+		}
+
+		// If Server-Side Encryption was requested, check we got a response header
+		// confirming that the data is encrypted
+		if sseReqValue := GetHeaderSSE(req.headers); sseReqValue != "" {
+			sseRespValue := GetHeaderSSE(httpResponse.Header)
+			if sseRespValue != sseReqValue {
+				// S3 didn't return matching SSE response so the requested encryption didn't happen
+				return fmt.Errorf("S3 did not honor encryption request: expected x-amz-server-side-encryption response header value %q but got %q",
+					sseReqValue, sseRespValue)
+			}
 		}
 	}
 	return err
