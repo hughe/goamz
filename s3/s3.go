@@ -908,14 +908,16 @@ func (s3 *S3) query(req *request, resp interface{}) error {
 			httpResponse.Body.Close()
 		}
 
-		// If Server-Side Encryption was requested, check we got a response header
-		// confirming that the data is encrypted
-		if sseReqValue := GetHeaderSSE(req.headers); sseReqValue != "" {
-			sseRespValue := GetHeaderSSE(httpResponse.Header)
-			if sseRespValue != sseReqValue {
-				// S3 didn't return matching SSE response so the requested encryption didn't happen
-				return fmt.Errorf("S3 did not honor encryption request: expected x-amz-server-side-encryption response header value %q but got %q",
-					sseReqValue, sseRespValue)
+		if err == nil {
+			// If Server-Side Encryption was requested, check we got a response header
+			// confirming that the data is encrypted
+			if sseReqValue := GetHeaderSSE(req.headers); sseReqValue != "" {
+				sseRespValue := GetHeaderSSE(httpResponse.Header)
+				if sseRespValue != sseReqValue {
+					// S3 didn't return matching SSE response so the requested encryption didn't happen
+					return fmt.Errorf("S3 did not honor encryption request: expected x-amz-server-side-encryption response header value %q but got %q",
+						sseReqValue, sseRespValue)
+				}
 			}
 		}
 	}
