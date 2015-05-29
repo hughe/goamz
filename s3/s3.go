@@ -1122,6 +1122,29 @@ func ShouldRetry(err error) bool {
 		err = e.Err
 	}
 
+	// Errors from the http and net packages can implement a Timeout
+	// method.  The following checks err to see if it has a Timeout
+	// method and checks it to see if we should retry.
+	type timeoutInterface interface {
+		Timeout() bool
+	}
+
+	if tErr, ok := err.(timeoutInterface); ok && tErr.Timeout() {
+		log.Println("Request timeout: ", err.Error())
+		return true
+	}
+
+	// Same thing but for the Temporary method.  We could combine this
+	// with timeoutInterface, but this way is a little more flexible.
+	type temporaryInterface interface {
+		Temporary() bool
+	}
+
+	if tErr, ok := err.(temporaryInterface); ok && tErr.Temporary() {
+		log.Println("Temporary error: ", err.Error())
+		return true
+	}
+
 	switch err {
 	case io.ErrUnexpectedEOF, io.EOF:
 		return true
