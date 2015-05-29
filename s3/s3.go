@@ -33,7 +33,7 @@ import (
 	"github.com/hughe/goamz/aws"
 )
 
-const debug = false
+var Debug = false
 
 // The S3 type encapsulates operations with an S3 region.
 type S3 struct {
@@ -985,7 +985,7 @@ func (s3 *S3) prepare(req *request) error {
 // If resp is not nil, the XML data contained in the response
 // body will be unmarshalled on it.
 func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
-	if debug {
+	if Debug {
 		log.Printf("Running S3 request: %#v", req)
 	}
 
@@ -1044,7 +1044,7 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	if debug {
+	if Debug {
 		dump, _ := httputil.DumpResponse(hresp, true)
 		log.Printf("} -> %s\n", dump)
 	}
@@ -1055,7 +1055,7 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 	if resp != nil {
 		err = xml.NewDecoder(hresp.Body).Decode(resp)
 		hresp.Body.Close()
-		if debug {
+		if Debug {
 			log.Printf("goamz.s3> decoded xml into %#v", resp)
 		}
 	}
@@ -1077,7 +1077,7 @@ func (e *Error) Error() string {
 }
 
 func buildError(r *http.Response) error {
-	if debug {
+	if Debug {
 		log.Printf("got error (status code %v)", r.StatusCode)
 		data, err := ioutil.ReadAll(r.Body)
 		if err != nil {
@@ -1096,7 +1096,7 @@ func buildError(r *http.Response) error {
 	if err.Message == "" {
 		err.Message = r.Status
 	}
-	if debug {
+	if Debug {
 		log.Printf("err: %#v\n", err)
 	}
 	return &err
