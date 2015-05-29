@@ -2,6 +2,11 @@ package s3_test
 
 import (
 	"encoding/xml"
+<<<<<<< HEAD
+=======
+	"github.com/hughe/goamz/s3"
+	"github.com/motain/gocheck"
+>>>>>>> e82b43a70c8a14c221b25fec952eb2795a8295fe
 	"io"
 	"io/ioutil"
 	"strings"
