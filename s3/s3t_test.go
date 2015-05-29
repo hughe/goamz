@@ -4,11 +4,7 @@ import (
 	"github.com/hughe/goamz/aws"
 	"github.com/hughe/goamz/s3"
 	"github.com/hughe/goamz/s3/s3test"
-<<<<<<< HEAD
 	. "gopkg.in/check.v1"
-=======
-	"github.com/motain/gocheck"
->>>>>>> e82b43a70c8a14c221b25fec952eb2795a8295fe
 )
 
 type LocalServer struct {

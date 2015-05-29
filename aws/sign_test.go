@@ -2,11 +2,6 @@ package aws_test
 
 import (
 	"fmt"
-<<<<<<< HEAD
-=======
-	"github.com/hughe/goamz/aws"
-	"github.com/motain/gocheck"
->>>>>>> e82b43a70c8a14c221b25fec952eb2795a8295fe
 	"net/http"
 	"strings"
 	"time"
