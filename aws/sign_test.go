@@ -2,16 +2,11 @@ package aws_test
 
 import (
 	"fmt"
-<<<<<<< HEAD
-=======
-	"github.com/hughe/goamz/aws"
-	"github.com/motain/gocheck"
->>>>>>> Changed paths in test files to github.com/hughe/goamz so that aws and s3 tests work properly
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/goamz/goamz/aws"
+	"github.com/hughe/goamz/aws"
 	. "gopkg.in/check.v1"
 )
 

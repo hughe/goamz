@@ -2,16 +2,11 @@ package s3_test
 
 import (
 	"encoding/xml"
-<<<<<<< HEAD
-=======
-	"github.com/hughe/goamz/s3"
-	"github.com/motain/gocheck"
->>>>>>> Changed paths in test files to github.com/hughe/goamz so that aws and s3 tests work properly
 	"io"
 	"io/ioutil"
 	"strings"
 
-	"github.com/goamz/goamz/s3"
+	"github.com/hughe/goamz/s3"
 	. "gopkg.in/check.v1"
 )
 
