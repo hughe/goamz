@@ -4,10 +4,11 @@ import (
 	"crypto/hmac"
 	"crypto/sha1"
 	"encoding/base64"
-	"github.com/hughe/goamz/aws"
 	"log"
 	"sort"
 	"strings"
+
+	"github.com/hughe/goamz/aws"
 )
 
 var b64 = base64.StdEncoding
@@ -107,7 +108,7 @@ func sign(auth aws.Auth, method, canonicalPath string, params, headers map[strin
 	} else {
 		headers["Authorization"] = []string{"AWS " + auth.AccessKey + ":" + string(signature)}
 	}
-	if debug {
+	if Debug {
 		log.Printf("Signature payload: %q", payload)
 		log.Printf("Signature: %q", signature)
 	}
