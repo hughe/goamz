@@ -1052,7 +1052,7 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 		return nil, err
 	}
 	if Debug {
-		dump, _ := httputil.DumpResponse(hresp, true)
+		dump, _ := httputil.DumpResponse(hresp, false)
 		log.Printf("} -> %s\n", dump)
 	}
 	if hresp.StatusCode != 200 && hresp.StatusCode != 204 && hresp.StatusCode != 206 {
@@ -1113,6 +1113,10 @@ func ShouldRetry(err error) bool {
 	if err == nil {
 		return false
 	}
+	if Debug {
+		log.Print("got error: ", err.Error())
+	}
+
 	if e, ok := err.(*url.Error); ok {
 		// Transport returns this string if it detects a write on a connection which
 		// has already had an error
