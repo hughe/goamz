@@ -992,10 +992,6 @@ func (s3 *S3) prepare(req *request) error {
 // If resp is not nil, the XML data contained in the response
 // body will be unmarshalled on it.
 func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
-	if Debug {
-		log.Printf("Running S3 request: %#v", req)
-	}
-
 	u, err := req.url()
 	if err != nil {
 		return nil, err
@@ -1045,6 +1041,11 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 				},
 			},
 		}
+	}
+
+	if Debug {
+		dump, _ := httputil.DumpRequestOut(&hreq, false)
+		log.Printf("Running S3 request: %s", dump)
 	}
 
 	hresp, err := s3.client.Do(&hreq)
