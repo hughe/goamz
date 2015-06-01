@@ -983,7 +983,7 @@ func (s3 *S3) prepare(req *request) error {
 
 	// Use GMT instead of UTC as the time zone.
 	// All the examples in the S3 documentation use GMT.
-	// Some S3-compatiblestorage providers (e.g Cloudian) require GMT
+	// Some S3-compatible storage providers (e.g Cloudian) require GMT
 	// rather than UTC (as of June 2015)
 	gmtDate := time.Now().In(time.FixedZone("GMT", 0)).Format(time.RFC1123)
 	req.headers["Date"] = []string{gmtDate}
