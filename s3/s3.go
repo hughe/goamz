@@ -23,7 +23,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"net/http/httputil"
 	"net/textproto"
 	"net/url"
 	"strconv"
@@ -1051,8 +1050,7 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 	}
 
 	if Debug {
-		dump, _ := httputil.DumpRequestOut(&hreq, false)
-		log.Printf("Running S3 request: %s", dump)
+		log.Printf("Running S3 request: %s %s %s", hreq.Method, hreq.URL, hreq.Header)
 	}
 
 	hresp, err := s3.client.Do(&hreq)
@@ -1060,8 +1058,7 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 		return nil, err
 	}
 	if Debug {
-		dump, _ := httputil.DumpResponse(hresp, false)
-		log.Printf("} -> %s\n", dump)
+		log.Printf("Response to S3 request: %s %s %s %s", hreq.Method, hreq.URL, hresp.Status, hresp.Header)
 	}
 	if hresp.StatusCode != 200 && hresp.StatusCode != 204 && hresp.StatusCode != 206 {
 		defer hresp.Body.Close()
