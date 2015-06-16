@@ -1101,13 +1101,24 @@ func buildError(r *http.Response) error {
 	}
 
 	err := Error{}
-	// TODO return error if Unmarshal fails?
-	xml.NewDecoder(r.Body).Decode(&err)
+	errMessage := ""
+	decodeErr := xml.NewDecoder(r.Body).Decode(&err)
+	if decodeErr != nil {
+		errMessage = fmt.Sprintf("decoding XML error response failed: %s\n", decodeErr.Error())
+	}
+	// could be empty due to decode error above or s3 didn't return an error message in XML body
+	if err.Message == "" {
+		data, readErr := ioutil.ReadAll(r.Body)
+		if readErr != nil {
+			errMessage = fmt.Sprintf("%s reading response body failed: %s\nresponse status: %s", errMessage, readErr.Error(), r.Status)
+		} else {
+			errMessage = fmt.Sprintf("%s raw response: \n%s", errMessage, data)
+		}
+		err.Message = errMessage
+	}
 	r.Body.Close()
 	err.StatusCode = r.StatusCode
-	if err.Message == "" {
-		err.Message = r.Status
-	}
+
 	if Debug {
 		log.Printf("err: %#v\n", err)
 	}
