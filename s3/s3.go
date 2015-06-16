@@ -1122,7 +1122,7 @@ func ShouldRetry(err error) bool {
 		return false
 	}
 	if Debug {
-		log.Print("got error: ", err.Error())
+		log.Printf("got error: %s (%#v)", err.Error(), err)
 	}
 
 	if e, ok := err.(*url.Error); ok {
@@ -1179,6 +1179,17 @@ func ShouldRetry(err error) bool {
 		switch e.Code {
 		case "InternalError", "NoSuchUpload", "NoSuchBucket", "RequestTimeout":
 			return true
+		}
+
+		switch e.StatusCode {
+		case http.StatusBadRequest: // 400
+			if e.Code == "" {
+				// Sometimes we get a 400 error with no Code, Message,
+				// RequestID, ... I don't think it even comes from S3,
+				// maybe a load balancer or something.  Anyway
+				// whatever causes it, it's not a bad request.
+				return true
+			}
 		}
 	}
 	return false
