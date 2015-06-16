@@ -23,7 +23,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"net/http/httputil"
 	"net/textproto"
 	"net/url"
 	"strconv"
@@ -1051,8 +1050,7 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 	}
 
 	if Debug {
-		dump, _ := httputil.DumpRequestOut(&hreq, false)
-		log.Printf("Running S3 request: %s", dump)
+		log.Printf("Running S3 request: %s %s %s", hreq.Method, hreq.URL, hreq.Header)
 	}
 
 	hresp, err := s3.client.Do(&hreq)
@@ -1060,8 +1058,7 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 		return nil, err
 	}
 	if Debug {
-		dump, _ := httputil.DumpResponse(hresp, false)
-		log.Printf("} -> %s\n", dump)
+		log.Printf("Response to S3 request: %s %s %s %s", hreq.Method, hreq.URL, hresp.Status, hresp.Header)
 	}
 	if hresp.StatusCode != 200 && hresp.StatusCode != 204 && hresp.StatusCode != 206 {
 		defer hresp.Body.Close()
@@ -1104,13 +1101,24 @@ func buildError(r *http.Response) error {
 	}
 
 	err := Error{}
-	// TODO return error if Unmarshal fails?
-	xml.NewDecoder(r.Body).Decode(&err)
+	errMessage := ""
+	decodeErr := xml.NewDecoder(r.Body).Decode(&err)
+	if decodeErr != nil {
+		errMessage = fmt.Sprintf("decoding XML error response failed: %s\n", decodeErr.Error())
+	}
+	// could be empty due to decode error above or s3 didn't return an error message in XML body
+	if err.Message == "" {
+		data, readErr := ioutil.ReadAll(r.Body)
+		if readErr != nil {
+			errMessage = fmt.Sprintf("%s reading response body failed: %s\nresponse status: %s", errMessage, readErr.Error(), r.Status)
+		} else {
+			errMessage = fmt.Sprintf("%s raw response: \n%s", errMessage, data)
+		}
+		err.Message = errMessage
+	}
 	r.Body.Close()
 	err.StatusCode = r.StatusCode
-	if err.Message == "" {
-		err.Message = r.Status
-	}
+
 	if Debug {
 		log.Printf("err: %#v\n", err)
 	}
