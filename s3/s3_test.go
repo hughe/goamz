@@ -448,7 +448,6 @@ func (s *S) TestBuildError(c *C) {
 	err = b.PutBucket(s3.Private)
 	testServer.WaitRequest()
 	c.Assert(err, NotNil)
-	// panic(err)
 
 	c.Assert(err.Error(), Equals, "decoding XML failed: EOF\nraw response: \n"+MalformedErrorDump+"\nresponse status: 400 Bad Request")
 }
