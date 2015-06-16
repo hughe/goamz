@@ -1091,37 +1091,42 @@ func (e *Error) Error() string {
 func buildError(r *http.Response) error {
 	if Debug {
 		log.Printf("got error (status code %v)", r.StatusCode)
-		data, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			log.Printf("\tread error: %v", err)
+	}
+
+	data, readErr := ioutil.ReadAll(r.Body)
+	r.Body.Close()
+
+	if Debug {
+		if readErr != nil {
+			log.Printf("\tread error: %v", readErr)
 		} else {
 			log.Printf("\tdata:\n%s\n\n", data)
 		}
-		r.Body = ioutil.NopCloser(bytes.NewBuffer(data))
 	}
 
 	err := Error{}
 	errMessage := ""
-	decodeErr := xml.NewDecoder(r.Body).Decode(&err)
-	if decodeErr != nil {
-		errMessage = fmt.Sprintf("decoding XML error response failed: %s\n", decodeErr.Error())
-	}
-	// could be empty due to decode error above or s3 didn't return an error message in XML body
-	if err.Message == "" {
-		data, readErr := ioutil.ReadAll(r.Body)
-		if readErr != nil {
-			errMessage = fmt.Sprintf("%s reading response body failed: %s\nresponse status: %s", errMessage, readErr.Error(), r.Status)
-		} else {
-			errMessage = fmt.Sprintf("%s raw response: \n%s", errMessage, data)
+	if readErr != nil {
+		errMessage = fmt.Sprintf("reading response body failed: %s\n", readErr.Error())
+	} else {
+		decodeErr := xml.Unmarshal(data, &err)
+		if decodeErr != nil {
+			errMessage = fmt.Sprintf("decoding XML failed: %s\n", decodeErr.Error())
 		}
-		err.Message = errMessage
 	}
-	r.Body.Close()
+	// could be empty due to read or decode error or s3 didn't return an error message in XML body
+	if err.Message == "" {
+		if readErr == nil {
+			errMessage = fmt.Sprintf("%sraw response: \n%s\n", errMessage, data)
+		}
+		err.Message = fmt.Sprintf("%sresponse status: %s", errMessage, r.Status)
+	}
 	err.StatusCode = r.StatusCode
 
 	if Debug {
 		log.Printf("err: %#v\n", err)
 	}
+
 	return &err
 }
 

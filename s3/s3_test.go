@@ -425,3 +425,30 @@ func (s *S) TestExistsNotFound403(c *C) {
 	c.Assert(err, IsNil)
 	c.Assert(result, Equals, false)
 }
+
+func (s *S) TestBuildError(c *C) {
+	testServer.Response(400, nil, "") // no response body
+	b := s.s3.Bucket("bucket")
+	err := b.PutBucket(s3.Private)
+	testServer.WaitRequest()
+	c.Assert(err, NotNil)
+
+	c.Assert(err.Error(), Equals, "decoding XML failed: EOF\nraw response: \n\nresponse status: 400 Bad Request")
+
+	testServer.Response(400, nil, PartialErrorDump) // missing "Message" property in response
+	b = s.s3.Bucket("bucket")
+	err = b.PutBucket(s3.Private)
+	testServer.WaitRequest()
+	c.Assert(err, NotNil)
+
+	c.Assert(err.Error(), Equals, "raw response: \n"+PartialErrorDump+"\nresponse status: 400 Bad Request")
+
+	testServer.Response(400, nil, MalformedErrorDump) // invalid/incomplete XML
+	b = s.s3.Bucket("bucket")
+	err = b.PutBucket(s3.Private)
+	testServer.WaitRequest()
+	c.Assert(err, NotNil)
+	// panic(err)
+
+	c.Assert(err.Error(), Equals, "decoding XML failed: EOF\nraw response: \n"+MalformedErrorDump+"\nresponse status: 400 Bad Request")
+}
