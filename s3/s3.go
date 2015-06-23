@@ -15,9 +15,11 @@ import (
 	"crypto/hmac"
 	"crypto/md5"
 	"crypto/sha1"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/xml"
 	"fmt"
+	"github.com/hughe/goamz/aws"
 	"io"
 	"io/ioutil"
 	"log"
@@ -28,8 +30,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/hughe/goamz/aws"
 )
 
 var Debug = false
@@ -1023,6 +1023,7 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 	if s3.client == nil {
 		s3.client = &http.Client{
 			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS10},
 				Dial: func(netw, addr string) (c net.Conn, err error) {
 					c, err = net.DialTimeout(netw, addr, s3.ConnectTimeout)
 					if err != nil {
