@@ -1045,6 +1045,7 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 					}
 					return
 				},
+				TLSHandshakeTimeout: 10 * time.Second,
 			},
 		}
 	}
