@@ -19,7 +19,6 @@ import (
 	"encoding/base64"
 	"encoding/xml"
 	"fmt"
-	"github.com/hughe/goamz/aws"
 	"io"
 	"io/ioutil"
 	"log"
@@ -30,6 +29,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/hughe/goamz/aws"
 )
 
 var Debug = false
@@ -394,6 +395,10 @@ PutReaderHeader - like PutReader, inserts an object into S3 from a reader.
 Instead of Content-Type string, pass in custom headers to override defaults.
 */
 func (b *Bucket) PutReaderHeader(path string, r io.Reader, length int64, customHeaders map[string][]string, perm ACL) error {
+	return b.PutReaderHeaderTimeout(path, r, length, customHeaders, perm, 0)
+}
+
+func (b *Bucket) PutReaderHeaderTimeout(path string, r io.Reader, length int64, customHeaders map[string][]string, perm ACL, timeout time.Duration) error {
 	// Default headers
 	headers := map[string][]string{
 		"Content-Length": {strconv.FormatInt(length, 10)},
@@ -412,6 +417,7 @@ func (b *Bucket) PutReaderHeader(path string, r io.Reader, length int64, customH
 		path:    path,
 		headers: headers,
 		payload: r,
+		timeout: timeout,
 	}
 	return b.S3.query(req, nil)
 }
@@ -890,6 +896,7 @@ type request struct {
 	baseurl  string
 	payload  io.Reader
 	prepared bool
+	timeout  time.Duration
 }
 
 func (req *request) url() (*url.URL, error) {
@@ -1020,6 +1027,14 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 		hreq.Body = ioutil.NopCloser(req.payload)
 	}
 
+	// The timeout for this request, defaults to s3.RequestTimeout
+	thisRequestTimeout := s3.RequestTimeout
+
+	// If there is a timeout set on the req, use that instead.
+	if req.timeout > 0 {
+		thisRequestTimeout = req.timeout
+	}
+
 	if s3.client == nil {
 		s3.client = &http.Client{
 			Transport: &http.Transport{
@@ -1031,9 +1046,13 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 					}
 
 					var deadline time.Time
-					if s3.RequestTimeout > 0 {
-						deadline = time.Now().Add(s3.RequestTimeout)
+					if thisRequestTimeout > 0 {
+						deadline = time.Now().Add(thisRequestTimeout)
 						c.SetDeadline(deadline)
+
+						if Debug {
+							log.Printf("RequestTimeout: %s", thisRequestTimeout)
+						}
 					}
 
 					if s3.ReadTimeout > 0 || s3.WriteTimeout > 0 {
