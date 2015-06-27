@@ -1027,16 +1027,12 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 		hreq.Body = ioutil.NopCloser(req.payload)
 	}
 
-	// The timeout for this request, defaults to s3.RequestTimeout
-	thisRequestTimeout := s3.RequestTimeout
+	var httpClient *http.Client
 
-	// If there is a timeout set on the req, use that instead.
-	if req.timeout > 0 {
-		thisRequestTimeout = req.timeout
-	}
-
-	if s3.client == nil {
-		s3.client = &http.Client{
+	if s3.client != nil {
+		httpClient = s3.client
+	} else {
+		httpClient = &http.Client{
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS10},
 				Dial: func(netw, addr string) (c net.Conn, err error) {
@@ -1045,13 +1041,23 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 						return
 					}
 
+					// The timeout for this request, defaults to s3.RequestTimeout
+					var thisRequestTimeout time.Duration
+
+					// If there is a timeout set on the req, use that instead.
+					if req.timeout != 0 {
+						thisRequestTimeout = req.timeout
+					} else {
+						thisRequestTimeout = s3.RequestTimeout
+					}
+
 					var deadline time.Time
 					if thisRequestTimeout > 0 {
 						deadline = time.Now().Add(thisRequestTimeout)
 						c.SetDeadline(deadline)
 
 						if Debug {
-							log.Printf("RequestTimeout: %s", thisRequestTimeout)
+							log.Printf("thisRequestTimeout: %s", thisRequestTimeout)
 						}
 					}
 
@@ -1074,7 +1080,7 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 		log.Printf("Running S3 request: %s %s %s", hreq.Method, hreq.URL, hreq.Header)
 	}
 
-	hresp, err := s3.client.Do(&hreq)
+	hresp, err := httpClient.Do(&hreq)
 	if err != nil {
 		return nil, err
 	}
