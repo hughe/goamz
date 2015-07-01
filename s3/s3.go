@@ -840,7 +840,7 @@ func (b *Bucket) UploadSignedURL(path, method, content_type string, expires time
 
 	signedurl, err := url.Parse("https://" + b.Name + ".s3.amazonaws.com/")
 	if err != nil {
-		log.Println("ERROR sining url for S3 upload", err)
+		log.Println("ERROR signing url for S3 upload", err)
 		return ""
 	}
 	signedurl.Path += path
@@ -1057,7 +1057,7 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 						c.SetDeadline(deadline)
 
 						if Debug {
-							log.Printf("thisRequestTimeout: %s", thisRequestTimeout)
+							log.Printf("Set RequestTimeout: %s", thisRequestTimeout)
 						}
 					}
 
