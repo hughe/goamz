@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/goamz/goamz/aws"
-	"github.com/goamz/goamz/dynamodb"
+	"github.com/hughe/goamz/aws"
+	"github.com/hughe/goamz/dynamodb"
 	. "gopkg.in/check.v1"
 )
 

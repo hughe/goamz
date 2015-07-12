@@ -1,7 +1,7 @@
 //
 // cloudformation: This package provides types and functions to interact with the AWS CloudFormation API
 //
-// Depends on https://github.com/goamz/goamz
+// Depends on https://github.com/hughe/goamz
 //
 
 package cloudformation
@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/goamz/goamz/aws"
+	"github.com/hughe/goamz/aws"
 )
 
 // The CloudFormation type encapsulates operations within a specific EC2 region.

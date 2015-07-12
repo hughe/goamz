@@ -1,7 +1,7 @@
 //
 // ecs: This package provides types and functions to interact with the AWS EC2 Container Service API
 //
-// Depends on https://github.com/goamz/goamz
+// Depends on https://github.com/hughe/goamz
 //
 // Author Boyan Dimitrov <boyann@gmail.com>
 //
@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/goamz/goamz/aws"
+	"github.com/hughe/goamz/aws"
 )
 
 const debug = false

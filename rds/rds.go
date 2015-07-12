@@ -2,7 +2,7 @@ package rds
 
 import (
 	"encoding/xml"
-	"github.com/goamz/goamz/aws"
+	"github.com/hughe/goamz/aws"
 	"log"
 	"net/http/httputil"
 	"strconv"

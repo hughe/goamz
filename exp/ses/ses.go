@@ -3,7 +3,7 @@ package ses
 
 import (
 	"encoding/xml"
-	"github.com/goamz/goamz/aws"
+	"github.com/hughe/goamz/aws"
 	"io/ioutil"
 	"net/http"
 	"net/url"

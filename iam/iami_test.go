@@ -3,9 +3,9 @@ package iam_test
 import (
 	"net/url"
 
-	"github.com/goamz/goamz/aws"
-	"github.com/goamz/goamz/iam"
-	"github.com/goamz/goamz/testutil"
+	"github.com/hughe/goamz/aws"
+	"github.com/hughe/goamz/iam"
+	"github.com/hughe/goamz/testutil"
 	. "gopkg.in/check.v1"
 )
 

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"hash"
 
-	"github.com/goamz/goamz/aws"
+	"github.com/hughe/goamz/aws"
 	. "gopkg.in/check.v1"
 )
 
