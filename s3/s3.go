@@ -1146,7 +1146,7 @@ func buildError(r *http.Response) error {
 		if readErr == nil {
 			errMessage = fmt.Sprintf("%sraw response: \n%s\n", errMessage, data)
 		}
-		err.Message = fmt.Sprintf("%sresponse status: %s", errMessage, r.Status)
+		err.Message = fmt.Sprintf("HTTP response '%s': %s", r.Status, errMessage)
 	}
 	err.StatusCode = r.StatusCode
 
@@ -1221,15 +1221,16 @@ func ShouldRetry(err error) bool {
 			return true
 		}
 
-		switch e.StatusCode {
-		case http.StatusBadRequest: // 400
-			if e.Code == "" {
-				// Sometimes we get a 400 error with no Code, Message,
-				// RequestID, ... I don't think it even comes from S3,
-				// maybe a load balancer or something.  Anyway
-				// whatever causes it, it's not a bad request.
-				return true
-			}
+		// 500-series responses should always be retried
+		if e.StatusCode >= 500 && e.StatusCode <= 599 {
+			return true
+		}
+
+		// Sometimes we get a 400 error with no Code, Message, RequestID, ...
+		// I don't think it even comes from S3, maybe a load balancer or something.
+		// Anyway whatever causes it, it's not a bad request.
+		if e.StatusCode == http.StatusBadRequest && e.Code == "" {
+			return true
 		}
 	}
 	return false
