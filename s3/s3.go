@@ -1226,6 +1226,11 @@ func ShouldRetry(err error) bool {
 			return true
 		}
 
+		// Response "429: Too Many Requests" means we're being rate-limited - always retry
+		if e.StatusCode == 429 {
+			return true
+		}
+
 		// Sometimes we get a 400 error with no Code, Message, RequestID, ...
 		// I don't think it even comes from S3, maybe a load balancer or something.
 		// Anyway whatever causes it, it's not a bad request.
