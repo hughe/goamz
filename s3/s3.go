@@ -1076,8 +1076,12 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 		}
 	}
 
+	var startTime time.Time
 	if Debug {
-		log.Printf("Running S3 Request: %s %s %s", hreq.Method, hreq.URL, hreq.Header)
+		log.Printf("%s GoAMZ Running S3 Request: %s %s %s",
+			time.Now().UTC().Format("2006/01/02 15:04:05.000"),
+			hreq.Method, hreq.URL, hreq.Header)
+		startTime = time.Now()
 	}
 
 	hresp, err := httpClient.Do(&hreq)
@@ -1085,7 +1089,14 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 		return nil, err
 	}
 	if Debug {
-		log.Printf("Response to S3 Request: %s %s %s %s", hreq.Method, hreq.URL, hresp.Status, hresp.Header)
+		endTime := time.Now()
+		dt := endTime.Sub(startTime)
+		if dt.Seconds() > 20 {
+			log.Printf("REQUEST TOOK TOO LONG: %7.3fs %s", dt.Seconds(), hreq.URL)
+		}
+		log.Printf("%s GoAMZ Response to S3 Request: %s %s %s %s %#v",
+			time.Now().UTC().Format("2006/01/02 15:04:05.000"),
+			hreq.Method, hreq.URL, hresp.Status, hresp.Header, err)
 	}
 	if hresp.StatusCode != 200 && hresp.StatusCode != 204 && hresp.StatusCode != 206 {
 		defer hresp.Body.Close()
