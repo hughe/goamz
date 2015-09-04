@@ -1091,12 +1091,9 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 	if Debug {
 		endTime := time.Now()
 		dt := endTime.Sub(startTime)
-		if dt.Seconds() > 20 {
-			log.Printf("REQUEST TOOK TOO LONG: %7.3fs %s", dt.Seconds(), hreq.URL)
-		}
-		log.Printf("%s GoAMZ Response to S3 Request: %s %s %s %s %#v",
+		log.Printf("%s GoAMZ Response to S3 Request: %s %s %s %s %s %#v",
 			time.Now().UTC().Format("2006/01/02 15:04:05.000"),
-			hreq.Method, hreq.URL, hresp.Status, hresp.Header, err)
+			hreq.Method, hreq.URL, dt, hresp.Status, hresp.Header, err)
 	}
 	if hresp.StatusCode != 200 && hresp.StatusCode != 204 && hresp.StatusCode != 206 {
 		defer hresp.Body.Close()
