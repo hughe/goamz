@@ -433,7 +433,7 @@ func (s *S) TestBuildError(c *C) {
 	testServer.WaitRequest()
 	c.Assert(err, NotNil)
 
-	c.Assert(err.Error(), Equals, "decoding XML failed: EOF\nraw response: \n\nresponse status: 400 Bad Request")
+	c.Assert(err.Error(), Equals, "HTTP response '400 Bad Request': decoding XML failed: EOF\nraw response: \n\n")
 
 	testServer.Response(400, nil, PartialErrorDump) // missing "Message" property in response
 	b = s.s3.Bucket("bucket")
@@ -441,7 +441,7 @@ func (s *S) TestBuildError(c *C) {
 	testServer.WaitRequest()
 	c.Assert(err, NotNil)
 
-	c.Assert(err.Error(), Equals, "raw response: \n"+PartialErrorDump+"\nresponse status: 400 Bad Request")
+	c.Assert(err.Error(), Equals, "HTTP response '400 Bad Request': raw response: \n"+PartialErrorDump+"\n")
 
 	testServer.Response(400, nil, MalformedErrorDump) // invalid/incomplete XML
 	b = s.s3.Bucket("bucket")
@@ -449,5 +449,5 @@ func (s *S) TestBuildError(c *C) {
 	testServer.WaitRequest()
 	c.Assert(err, NotNil)
 
-	c.Assert(err.Error(), Equals, "decoding XML failed: EOF\nraw response: \n"+MalformedErrorDump+"\nresponse status: 400 Bad Request")
+	c.Assert(err.Error(), Equals, "HTTP response '400 Bad Request': decoding XML failed: EOF\nraw response: \n"+MalformedErrorDump+"\n")
 }

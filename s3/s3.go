@@ -250,10 +250,15 @@ func (b *Bucket) GetResponse(path string) (resp *http.Response, err error) {
 // It is the caller's responsibility to call Close on rc when
 // finished reading
 func (b *Bucket) GetResponseWithHeaders(path string, headers map[string][]string) (resp *http.Response, err error) {
+	return b.GetResponseWithHeadersAndTimeout(path, headers, 0)
+}
+
+func (b *Bucket) GetResponseWithHeadersAndTimeout(path string, headers map[string][]string, timeout time.Duration) (resp *http.Response, err error) {
 	req := &request{
 		bucket:  b.Name,
 		path:    path,
 		headers: headers,
+		timeout: timeout,
 	}
 	err = b.S3.prepare(req)
 	if err != nil {
