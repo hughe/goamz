@@ -1170,6 +1170,8 @@ func buildError(r *http.Response) error {
 	return &err
 }
 
+var RetryAlmostAllErrors bool = true
+
 func ShouldRetry(err error) bool {
 	if err == nil {
 		return false
@@ -1177,6 +1179,17 @@ func ShouldRetry(err error) bool {
 	if Debug {
 		log.Printf("got error: %s (%#v)", err.Error(), err)
 	}
+	if RetryAlmostAllErrors {
+		return shouldRetryAlmostAll(err)
+	}
+	return shouldRetrySpecific(err)
+}
+
+func shouldRetrySpecific(err error) bool {
+	// This is the body of the orginal ShouldRetry function.  It has
+	// lots of different cases for different kinds of error that come
+	// from the HTTP library, the network library, S3 and the Moon.
+	// We tried to make this exhaustive, but that seems impossible.
 
 	if e, ok := err.(*url.Error); ok {
 		// Transport returns this string if it detects a write on a connection which
@@ -1257,6 +1270,43 @@ func ShouldRetry(err error) bool {
 		}
 	}
 	return false
+}
+
+func shouldRetryAlmostAll(err error) bool {
+	// Strip aways the url.Error wrapper if we got one.
+	if e, ok := err.(*url.Error); ok {
+		err = e.Err
+	}
+
+	if e, ok := err.(*Error); ok {
+		// Error came from S3 (or some proxy)
+		if e.StatusCode < 500 {
+			// Codes < 500 should not be retried except ...
+
+			switch e.Code {
+			case "InternalError", "NoSuchUpload", "NoSuchBucket", "RequestTimeout":
+				return true
+			}
+
+			if e.StatusCode == 429 {
+				// Rate limiting I think ...
+				return true
+			}
+
+			// ... Sometimes we get a 400 error with no Code, Message, RequestID, ...
+			// I don't think it even comes from S3, maybe a load balancer or something.
+			// Anyway whatever causes it, it's not a bad request.
+			if e.StatusCode == http.StatusBadRequest && e.Code == "" {
+				return true
+			}
+
+			return false
+		}
+	}
+
+	// We should retry everything, unless we have decided not to
+	// above.
+	return true
 }
 
 func hasCode(err error, code string) bool {
