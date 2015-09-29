@@ -1210,9 +1210,14 @@ func ShouldRetry(err error) bool {
 		return true
 	}
 
+	switch err.Error() {
 	// This one does not have a type or a variable, which is bad.  It
 	// happens if an http.Client timesout while connecting.
-	if err.Error() == "net/http: request canceled while waiting for connection" {
+	case "net/http: request canceled while waiting for connection":
+		return true
+
+		// Ditto
+	case "use of closed network connection":
 		return true
 	}
 
