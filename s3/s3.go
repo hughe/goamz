@@ -1039,6 +1039,7 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 	} else {
 		httpClient = &http.Client{
 			Transport: &http.Transport{
+				Proxy:           http.ProxyFromEnvironment,
 				TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS10},
 				Dial: func(netw, addr string) (c net.Conn, err error) {
 					c, err = net.DialTimeout(netw, addr, s3.ConnectTimeout)
