@@ -16,6 +16,7 @@ import (
 	"crypto/md5"
 	"crypto/sha1"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/xml"
 	"fmt"
@@ -74,8 +75,13 @@ type S3 struct {
 	// Reserve the right of using private data.
 	private byte
 
-	// client used for requests
+	// client used for requests, or nil to construct our own client with retry behavior
 	client *http.Client
+
+	// set of root CA certificates is used for verifying server certificates for HTTPS connections
+	// or nil to use the default system root CAs
+	// only used when we construct our own client
+	rootCAs *x509.CertPool
 }
 
 // The Bucket type encapsulates operations with an S3 bucket.
@@ -133,7 +139,32 @@ func New(auth aws.Auth, region aws.Region, client ...*http.Client) *S3 {
 		httpclient = client[0]
 	}
 
-	return &S3{Auth: auth, Region: region, AttemptStrategy: DefaultAttemptStrategy, client: httpclient}
+	return &S3{
+		Auth:            auth,
+		Region:          region,
+		AttemptStrategy: DefaultAttemptStrategy,
+		client:          httpclient,
+	}
+}
+
+// New creates a new S3.  Optional client argument allows for custom http.clients to be used.
+// rootCAs is an optional set of root CA certificates is used for verifying server certificates
+// for HTTPS connections; nil means use the default system root CA set.
+func NewWithCustomRootCAs(auth aws.Auth, region aws.Region, rootCAs *x509.CertPool, client ...*http.Client) *S3 {
+
+	var httpclient *http.Client
+
+	if len(client) > 0 {
+		httpclient = client[0]
+	}
+
+	return &S3{
+		Auth:            auth,
+		Region:          region,
+		AttemptStrategy: DefaultAttemptStrategy,
+		client:          httpclient,
+		rootCAs:         rootCAs,
+	}
 }
 
 // Bucket returns a Bucket with the given name.
@@ -1039,8 +1070,11 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 	} else {
 		httpClient = &http.Client{
 			Transport: &http.Transport{
-				Proxy:           http.ProxyFromEnvironment,
-				TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS10},
+				Proxy: http.ProxyFromEnvironment,
+				TLSClientConfig: &tls.Config{
+					MinVersion: tls.VersionTLS10,
+					RootCAs:    s3.rootCAs, // nil means use the host's root CA set
+				},
 				Dial: func(netw, addr string) (c net.Conn, err error) {
 					c, err = net.DialTimeout(netw, addr, s3.ConnectTimeout)
 					if err != nil {
