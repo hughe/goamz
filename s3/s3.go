@@ -1259,11 +1259,11 @@ func shouldRetrySpecific(err error) bool {
 		}
 
 		switch e.StatusCode {
-		case http.StatusTooManyRequests: // 429
+		case 429: // http.StatusTooManyRequests:
 			// Rate limiting I think ...
 			return true
-		case http.StatusConflict:
-			// 409 HDS HCP returns this one when it gets confused
+		case http.StatusConflict: // 409
+			// HDS HCP returns this one when it gets confused
 			// sometimes.  It thinks that two entities (goroutines
 			// or something) are trying to access (PUT) the same
 			// object at the same time.  I think it is caused
@@ -1301,11 +1301,11 @@ func shouldRetryAlmostAll(err error) bool {
 			}
 
 			switch e.StatusCode {
-			case http.StatusTooManyRequests: // 429
+			case 429: // http.StatusTooManyRequests:
 				// Rate limiting I think ...
 				return true
-			case http.StatusConflict:
-				// 409 HDS HCP returns this one when it gets confused
+			case http.StatusConflict: // 409
+				// HDS HCP returns this one when it gets confused
 				// sometimes.  It thinks that two entities (goroutines
 				// or something) are trying to access (PUT) the same
 				// object at the same time.  I think it is caused
