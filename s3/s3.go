@@ -1292,9 +1292,20 @@ func shouldRetrySpecific(err error) bool {
 			return true
 		}
 
-		// Response "429: Too Many Requests" means we're being rate-limited - always retry
-		if e.StatusCode == 429 {
+		switch e.StatusCode {
+		case 429: // http.StatusTooManyRequests:
+			// Rate limiting I think ...
 			return true
+		case http.StatusConflict: // 409
+			// HDS HCP returns this one when it gets confused
+			// sometimes.  It thinks that two entities (goroutines
+			// or something) are trying to access (PUT) the same
+			// object at the same time.  I think it is caused
+			// becase the initial PUT fails due to a network error
+			// and then the PUT is retried.
+			return true
+		default:
+			// Fallthrough
 		}
 
 		// Sometimes we get a 400 error with no Code, Message, RequestID, ...
@@ -1323,9 +1334,20 @@ func shouldRetryAlmostAll(err error) bool {
 				return true
 			}
 
-			if e.StatusCode == 429 {
+			switch e.StatusCode {
+			case 429: // http.StatusTooManyRequests:
 				// Rate limiting I think ...
 				return true
+			case http.StatusConflict: // 409
+				// HDS HCP returns this one when it gets confused
+				// sometimes.  It thinks that two entities (goroutines
+				// or something) are trying to access (PUT) the same
+				// object at the same time.  I think it is caused
+				// becase the initial PUT fails due to a network error
+				// and then the PUT is retried.
+				return true
+			default:
+				// Fallthrough
 			}
 
 			// ... Sometimes we get a 400 error with no Code, Message, RequestID, ...
