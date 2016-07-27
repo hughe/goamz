@@ -1151,12 +1151,13 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 
 // Error represents an error in an operation with S3.
 type Error struct {
-	StatusCode int    // HTTP status code (200, 403, ...)
-	Code       string // EC2 error code ("UnsupportedOperation", ...)
-	Message    string // The human-oriented error message
-	BucketName string
-	RequestId  string
-	HostId     string
+	StatusCode      int    // HTTP status code (200, 403, ...)
+	Code            string // EC2 error code ("UnsupportedOperation", ...)
+	Message         string // The human-oriented error message
+	BucketName      string
+	RequestId       string
+	HostId          string
+	ResponseHeaders http.Header
 }
 
 func (e *Error) Error() string {
@@ -1179,7 +1180,7 @@ func buildError(r *http.Response) error {
 		}
 	}
 
-	err := Error{}
+	err := Error{ResponseHeaders: r.Header}
 	errMessage := ""
 	if readErr != nil {
 		errMessage = fmt.Sprintf("reading response body failed: %s\n", readErr.Error())
@@ -1297,13 +1298,7 @@ func shouldRetrySpecific(err error) bool {
 			// Rate limiting I think ...
 			return true
 		case http.StatusConflict: // 409
-			// HDS HCP returns this one when it gets confused
-			// sometimes.  It thinks that two entities (goroutines
-			// or something) are trying to access (PUT) the same
-			// object at the same time.  I think it is caused
-			// becase the initial PUT fails due to a network error
-			// and then the PUT is retried.
-			return true
+			return shouldRetryConflictError(e)
 		default:
 			// Fallthrough
 		}
@@ -1339,13 +1334,7 @@ func shouldRetryAlmostAll(err error) bool {
 				// Rate limiting I think ...
 				return true
 			case http.StatusConflict: // 409
-				// HDS HCP returns this one when it gets confused
-				// sometimes.  It thinks that two entities (goroutines
-				// or something) are trying to access (PUT) the same
-				// object at the same time.  I think it is caused
-				// becase the initial PUT fails due to a network error
-				// and then the PUT is retried.
-				return true
+				return shouldRetryConflictError(e)
 			default:
 				// Fallthrough
 			}
@@ -1364,6 +1353,33 @@ func shouldRetryAlmostAll(err error) bool {
 	// We should retry everything, unless we have decided not to
 	// above.
 	return true
+}
+
+func shouldRetryConflictError(err *Error) bool {
+	if err.StatusCode != http.StatusConflict {
+		panic("Expected error to have HTTP 409 status code")
+	}
+	// HDS HCP can return a conflicting operation error when two HTTP requests
+	// simultaneously PUT to the same key. This is most often observed when
+	// the first HTTP request has timed out, and a second retry request runs before
+	// HCP has recognized the first attempt is now terminated.
+	//
+	// Additionally, on HCP, this must be differentiated from a 409 error where
+	// an object already exists, which should never be retried. The only
+	// way to identify this is by checking the response body text.
+	// This differentiation is not needed on other platforms (e.g. S3) as they
+	// have last-write wins semantics, making PUTs idempotent, and will not
+	// return an object already exists error.
+	server := err.ResponseHeaders.Get("Server")
+	// retry on all platforms except HCP
+	if !strings.HasPrefix(server, "HCP") {
+		return true
+	}
+	// only retry on HCP if this is a conflicting operation error NOT an object already exists error
+	if err.Code == "OperationAborted" && strings.Contains(strings.ToLower(err.Error()), "conflicting operation") {
+		return true
+	}
+	return false
 }
 
 func hasCode(err error, code string) bool {
