@@ -34,6 +34,11 @@ var _ = Suite(&AmazonClientSuite{Region: aws.USEast})
 var _ = Suite(&AmazonClientSuite{Region: aws.EUWest})
 var _ = Suite(&AmazonDomainClientSuite{Region: aws.USEast})
 
+var _ = Suite(&AmazonClientSuite{Region: aws.USEast, ClientTests: ClientTests{isV4: true}})
+var _ = Suite(&AmazonClientSuite{Region: aws.EUWest, ClientTests: ClientTests{isV4: true}})
+var _ = Suite(&AmazonDomainClientSuite{Region: aws.USEast, ClientTests: ClientTests{isV4: true}})
+var _ = Suite(&AmazonClientSuite{Region: aws.EUCentral, ClientTests: ClientTests{isV4: true}})
+
 // AmazonClientSuite tests the client against a live S3 server.
 type AmazonClientSuite struct {
 	aws.Region
@@ -46,7 +51,11 @@ func (s *AmazonClientSuite) SetUpSuite(c *C) {
 		c.Skip("live tests against AWS disabled (no -amazon)")
 	}
 	s.srv.SetUp(c)
-	s.s3 = s3.New(s.srv.auth, s.Region)
+	if s.isV4 {
+		s.s3 = s3.NewV4(s.srv.auth, s.Region)
+	} else {
+		s.s3 = s3.New(s.srv.auth, s.Region)
+	}
 	// In case tests were interrupted in the middle before.
 	s.ClientTests.Cleanup()
 }
@@ -71,7 +80,11 @@ func (s *AmazonDomainClientSuite) SetUpSuite(c *C) {
 	s.srv.SetUp(c)
 	region := s.Region
 	region.S3BucketEndpoint = "https://${bucket}.s3.amazonaws.com"
-	s.s3 = s3.New(s.srv.auth, region)
+	if s.isV4 {
+		s.s3 = s3.NewV4(s.srv.auth, s.Region)
+	} else {
+		s.s3 = s3.New(s.srv.auth, s.Region)
+	}
 	s.ClientTests.Cleanup()
 }
 
@@ -85,6 +98,7 @@ func (s *AmazonDomainClientSuite) TearDownTest(c *C) {
 type ClientTests struct {
 	s3           *s3.S3
 	authIsBroken bool
+	isV4         bool
 }
 
 func (s *ClientTests) Cleanup() {
@@ -193,14 +207,17 @@ func (s *ClientTests) TestBasicFunctionality(c *C) {
 	c.Check(string(data), Equals, "hey!")
 	rc.Close()
 
-	data, err = get(b.SignedURL("name2", time.Now().Add(time.Hour)))
-	c.Assert(err, IsNil)
-	c.Assert(string(data), Equals, "hey!")
-
-	if !s.authIsBroken {
-		data, err = get(b.SignedURL("name2", time.Now().Add(-time.Hour)))
+	if !s.isV4 {
+		// V4 currently not supporting the SignedURL method call
+		data, err = get(b.SignedURL("name2", time.Now().Add(time.Hour)))
 		c.Assert(err, IsNil)
-		c.Assert(string(data), Matches, "(?s).*AccessDenied.*")
+		c.Assert(string(data), Equals, "hey!")
+
+		if !s.authIsBroken {
+			data, err = get(b.SignedURL("name2", time.Now().Add(-time.Hour)))
+			c.Assert(err, IsNil)
+			c.Assert(string(data), Matches, "(?s).*AccessDenied.*")
+		}
 	}
 
 	err = b.DelBucket()
@@ -233,10 +250,32 @@ func (s *ClientTests) TestGetNotFound(c *C) {
 	c.Assert(data, IsNil)
 }
 
+func stringInSlice(a string, list []string) bool {
+	for _, b := range list {
+		if b == a {
+			return true
+		}
+	}
+	return false
+}
+
+func shouldSkipRegion(regionName string, isV4 bool) bool {
+	var skipRegionList []string
+	if isV4 {
+		skipRegionList = []string{aws.USGovWest.Name, aws.CNNorth.Name}
+	} else {
+		skipRegionList = []string{aws.EUCentral.Name, aws.USGovWest.Name, aws.CNNorth.Name}
+	}
+	return stringInSlice(regionName, skipRegionList)
+}
+
 // Communicate with all endpoints to see if they are alive.
 func (s *ClientTests) TestRegions(c *C) {
 	errs := make(chan error, len(aws.Regions))
 	for _, region := range aws.Regions {
+		if shouldSkipRegion(region.Name, s.isV4) {
+			continue // this is for V4 signing only
+		}
 		go func(r aws.Region) {
 			s := s3.New(s.s3.Auth, r)
 			b := s.Bucket("goamz-" + s.Auth.AccessKey)
@@ -244,7 +283,10 @@ func (s *ClientTests) TestRegions(c *C) {
 			errs <- err
 		}(region)
 	}
-	for _ = range aws.Regions {
+	for _, region := range aws.Regions {
+		if shouldSkipRegion(region.Name, s.isV4) {
+			continue // this is for V4 signing only
+		}
 		err := <-errs
 		if err != nil {
 			s3_err, ok := err.(*s3.Error)
@@ -406,6 +448,9 @@ func checkContents(c *C, contents []s3.Key, data map[string][]byte, expected []s
 }
 
 func (s *ClientTests) TestMultiInitPutList(c *C) {
+	if s.isV4 {
+		c.Skip("V4 implementation not yet tested for multi")
+	}
 	b := testBucket(s.s3)
 	err := b.PutBucket(s3.Private)
 	c.Assert(err, IsNil)
@@ -453,6 +498,9 @@ func (s *ClientTests) TestMultiInitPutList(c *C) {
 // This may take a minute or more due to the minimum size accepted S3
 // on multipart upload parts.
 func (s *ClientTests) TestMultiComplete(c *C) {
+	if s.isV4 {
+		c.Skip("V4 implementation not yet tested for multi")
+	}
 	b := testBucket(s.s3)
 	err := b.PutBucket(s3.Private)
 	c.Assert(err, IsNil)
@@ -494,6 +542,9 @@ func (l multiList) Less(i, j int) bool { return l[i].Key < l[j].Key }
 func (l multiList) Swap(i, j int)      { l[i], l[j] = l[j], l[i] }
 
 func (s *ClientTests) TestListMulti(c *C) {
+	if s.isV4 {
+		c.Skip("V4 implementation not yet tested for multi")
+	}
 	b := testBucket(s.s3)
 	err := b.PutBucket(s3.Private)
 	c.Assert(err, IsNil)
@@ -569,6 +620,9 @@ func (s *ClientTests) TestListMulti(c *C) {
 }
 
 func (s *ClientTests) TestMultiPutAllZeroLength(c *C) {
+	if s.isV4 {
+		c.Skip("V4 implementation not yet tested for multi")
+	}
 	b := testBucket(s.s3)
 	err := b.PutBucket(s3.Private)
 	c.Assert(err, IsNil)

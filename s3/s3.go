@@ -1,4 +1,3 @@
-//
 // goamz - Go packages to interact with the Amazon Web Services.
 //
 //   https://wiki.ubuntu.com/goamz
@@ -82,6 +81,9 @@ type S3 struct {
 	// or nil to use the default system root CAs
 	// only used when we construct our own client
 	rootCAs *x509.CertPool
+
+	signer *V4Signer
+	v4sign bool
 }
 
 // The Bucket type encapsulates operations with an S3 bucket.
@@ -138,13 +140,21 @@ func New(auth aws.Auth, region aws.Region, client ...*http.Client) *S3 {
 	if len(client) > 0 {
 		httpclient = client[0]
 	}
-
-	return &S3{
+	s3 := &S3{
 		Auth:            auth,
 		Region:          region,
 		AttemptStrategy: DefaultAttemptStrategy,
 		client:          httpclient,
-	}
+		signer:          NewV4Signer(auth, "s3", region),
+		v4sign:          false}
+	s3.signer.IncludeXAmzContentSha256 = true
+	return s3
+}
+
+func NewV4(auth aws.Auth, region aws.Region) *S3 {
+	s3 := New(auth, region)
+	s3.v4sign = true
+	return s3
 }
 
 // New creates a new S3.  Optional client argument allows for custom http.clients to be used.
@@ -158,13 +168,22 @@ func NewWithCustomRootCAs(auth aws.Auth, region aws.Region, rootCAs *x509.CertPo
 		httpclient = client[0]
 	}
 
-	return &S3{
+	s3 := &S3{
 		Auth:            auth,
 		Region:          region,
 		AttemptStrategy: DefaultAttemptStrategy,
 		client:          httpclient,
 		rootCAs:         rootCAs,
-	}
+		signer:          NewV4Signer(auth, "s3", region),
+		v4sign:          false}
+	s3.signer.IncludeXAmzContentSha256 = true
+	return s3
+}
+
+func NewWithCustomRootCAsV4(auth aws.Auth, region aws.Region, rootCAs *x509.CertPool, client ...*http.Client) *S3 {
+	s3 := NewWithCustomRootCAsV4(auth, region, rootCAs, client...)
+	s3.v4sign = true
+	return s3
 }
 
 // Bucket returns a Bucket with the given name.
@@ -224,12 +243,12 @@ func (b *Bucket) PutBucket(perm ACL) error {
 //
 // See http://goo.gl/GoBrY for details.
 func (b *Bucket) DelBucket() (err error) {
-	req := &request{
-		method: "DELETE",
-		bucket: b.Name,
-		path:   "/",
-	}
 	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(); {
+		req := &request{
+			method: "DELETE",
+			bucket: b.Name,
+			path:   "/",
+		}
 		err = b.S3.query(req, nil)
 		if !ShouldRetry(err) {
 			break
@@ -285,17 +304,17 @@ func (b *Bucket) GetResponseWithHeaders(path string, headers map[string][]string
 }
 
 func (b *Bucket) GetResponseWithHeadersAndTimeout(path string, headers map[string][]string, timeout time.Duration) (resp *http.Response, err error) {
-	req := &request{
-		bucket:  b.Name,
-		path:    path,
-		headers: headers,
-		timeout: timeout,
-	}
-	err = b.S3.prepare(req)
-	if err != nil {
-		return nil, err
-	}
 	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(); {
+		req := &request{
+			bucket:  b.Name,
+			path:    path,
+			headers: headers,
+			timeout: timeout,
+		}
+		err = b.S3.prepare(req)
+		if err != nil {
+			return nil, err
+		}
 		resp, err := b.S3.run(req, nil)
 		if ShouldRetry(err) && attempt.HasNext() {
 			continue
@@ -310,16 +329,16 @@ func (b *Bucket) GetResponseWithHeadersAndTimeout(path string, headers map[strin
 
 // Exists checks whether or not an object exists on an S3 bucket using a HEAD request.
 func (b *Bucket) Exists(path string) (exists bool, err error) {
-	req := &request{
-		method: "HEAD",
-		bucket: b.Name,
-		path:   path,
-	}
-	err = b.S3.prepare(req)
-	if err != nil {
-		return
-	}
 	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(); {
+		req := &request{
+			method: "HEAD",
+			bucket: b.Name,
+			path:   path,
+		}
+		err = b.S3.prepare(req)
+		if err != nil {
+			return
+		}
 		resp, err := b.S3.run(req, nil)
 
 		if ShouldRetry(err) && attempt.HasNext() {
@@ -345,18 +364,17 @@ func (b *Bucket) Exists(path string) (exists bool, err error) {
 // Head HEADs an object in the S3 bucket, returns the response with
 // no body see http://bit.ly/17K1ylI
 func (b *Bucket) Head(path string, headers map[string][]string) (*http.Response, error) {
-	req := &request{
-		method:  "HEAD",
-		bucket:  b.Name,
-		path:    path,
-		headers: headers,
-	}
-	err := b.S3.prepare(req)
-	if err != nil {
-		return nil, err
-	}
-
 	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(); {
+		req := &request{
+			method:  "HEAD",
+			bucket:  b.Name,
+			path:    path,
+			headers: headers,
+		}
+		err := b.S3.prepare(req)
+		if err != nil {
+			return nil, err
+		}
 		resp, err := b.S3.run(req, nil)
 		if ShouldRetry(err) && attempt.HasNext() {
 			continue
@@ -709,12 +727,12 @@ func (b *Bucket) List(prefix, delim, marker string, max int) (result *ListResp, 
 	if max != 0 {
 		params["max-keys"] = []string{strconv.FormatInt(int64(max), 10)}
 	}
-	req := &request{
-		bucket: b.Name,
-		params: params,
-	}
 	result = &ListResp{}
 	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(); {
+		req := &request{
+			bucket: b.Name,
+			params: params,
+		}
 		err = b.S3.query(req, result)
 		if !ShouldRetry(err) {
 			break
@@ -770,12 +788,12 @@ func (b *Bucket) Versions(prefix, delim, keyMarker string, versionIdMarker strin
 	if max != 0 {
 		params["max-keys"] = []string{strconv.FormatInt(int64(max), 10)}
 	}
-	req := &request{
-		bucket: b.Name,
-		params: params,
-	}
 	result = &VersionsResp{}
 	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(); {
+		req := &request{
+			bucket: b.Name,
+			params: params,
+		}
 		err = b.S3.query(req, result)
 		if !ShouldRetry(err) {
 			break
@@ -1033,7 +1051,9 @@ func (s3 *S3) prepare(req *request) error {
 	if s3.Auth.Token() != "" {
 		req.headers["X-Amz-Security-Token"] = []string{s3.Auth.Token()}
 	}
-	sign(s3.Auth, req.method, reqSignpathSpaceFix, req.params, req.headers)
+	if !s3.v4sign {
+		sign(s3.Auth, req.method, reqSignpathSpaceFix, req.params, req.headers)
+	}
 	return nil
 }
 
@@ -1048,6 +1068,7 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 
 	hreq := http.Request{
 		URL:        u,
+		Host:       u.Host,
 		Method:     req.method,
 		ProtoMajor: 1,
 		ProtoMinor: 1,
@@ -1063,6 +1084,9 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 		hreq.Body = ioutil.NopCloser(req.payload)
 	}
 
+	if s3.v4sign {
+		s3.signer.Sign(&hreq)
+	}
 	var httpClient *http.Client
 
 	if s3.client != nil {
