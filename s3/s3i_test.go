@@ -269,7 +269,6 @@ func shouldSkipRegion(regionName string, isV4 bool) bool {
 	return stringInSlice(regionName, skipRegionList)
 }
 
-/*
 // Communicate with all endpoints to see if they are alive.
 func (s *ClientTests) TestRegions(c *C) {
 	errs := make(chan error, len(aws.Regions))
@@ -303,7 +302,7 @@ func (s *ClientTests) TestRegions(c *C) {
 		}
 	}
 }
-*/
+
 var objectNames = []string{
 	"index.html",
 	"index2.html",
