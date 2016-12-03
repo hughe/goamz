@@ -151,8 +151,8 @@ func New(auth aws.Auth, region aws.Region, client ...*http.Client) *S3 {
 	return s3
 }
 
-func NewV4(auth aws.Auth, region aws.Region) *S3 {
-	s3 := New(auth, region)
+func NewV4(auth aws.Auth, region aws.Region, client ...*http.Client) *S3 {
+	s3 := New(auth, region, client...)
 	s3.v4sign = true
 	return s3
 }
