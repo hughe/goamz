@@ -181,7 +181,7 @@ func NewWithCustomRootCAs(auth aws.Auth, region aws.Region, rootCAs *x509.CertPo
 }
 
 func NewWithCustomRootCAsV4(auth aws.Auth, region aws.Region, rootCAs *x509.CertPool, client ...*http.Client) *S3 {
-	s3 := NewWithCustomRootCAsV4(auth, region, rootCAs, client...)
+	s3 := NewWithCustomRootCAs(auth, region, rootCAs, client...)
 	s3.v4sign = true
 	return s3
 }
