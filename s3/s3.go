@@ -127,8 +127,8 @@ type CopyObjectResult struct {
 
 // DefaultAttemptStrategy is the default AttemptStrategy used by S3 objects created by New.
 var DefaultAttemptStrategy = aws.AttemptStrategy{
-	Min:   5,
-	Total: 5 * time.Second,
+	Min:   10,
+	Total: 10 * time.Second,
 	Delay: 200 * time.Millisecond,
 }
 
