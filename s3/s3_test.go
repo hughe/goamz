@@ -36,7 +36,7 @@ func (s *S) TearDownSuite(c *C) {
 }
 
 func (s *S) SetUpTest(c *C) {
-	s.s3.AttemptStrategy = aws.AttemptStrategy{
+	s.s3.AttemptStrategy = aws.FixedAttemptStrategy{
 		Total: 300 * time.Millisecond,
 		Delay: 100 * time.Millisecond,
 	}
@@ -47,7 +47,7 @@ func (s *S) TearDownTest(c *C) {
 }
 
 func (s *S) DisableRetries() {
-	s.s3.AttemptStrategy = aws.AttemptStrategy{}
+	s.s3.AttemptStrategy = aws.FixedAttemptStrategy{}
 }
 
 // PutBucket docs: http://goo.gl/kBTCu
@@ -449,5 +449,5 @@ func (s *S) TestBuildError(c *C) {
 	testServer.WaitRequest()
 	c.Assert(err, NotNil)
 
-	c.Assert(err.Error(), Equals, "HTTP response '400 Bad Request': decoding XML failed: EOF\nraw response: \n"+MalformedErrorDump+"\n")
+	c.Assert(err.Error(), Equals, "HTTP response '400 Bad Request': decoding XML failed: XML syntax error on line 6: unexpected EOF\nraw response: \n"+MalformedErrorDump+"\n")
 }

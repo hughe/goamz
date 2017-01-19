@@ -5,16 +5,37 @@ import (
 )
 
 // AttemptStrategy represents a strategy for waiting for an action
-// to complete successfully. This is an internal type used by the
-// implementation of other goamz packages.
-type AttemptStrategy struct {
+// to complete successfully.
+type AttemptStrategy interface {
+	// Start begins a new sequence of attempts for the strategy.
+	Start() Attempt
+}
+
+// Attempt represents a sequence of attempts to perform an action successfully.
+type Attempt interface {
+	// Next waits until it is time to perform the next attempt or returns
+	// false if it is time to stop trying. If error is provided it is the error
+	// the previous attempt in the sequence failed with, or nil if this is the
+	// first attempt.
+	Next(err error) bool
+	// HasNext returns whether another attempt will be made if the current
+	// one fails. If it returns true, the following call to Next is
+	// guaranteed to return true.
+	HasNext() bool
+}
+
+// FixedAttemptStrategy implements AttemptStrategy and applies a fixed backoff
+// between attempts, optionally performing a minimum number of attempts before
+// abandoning the attempt sequence once a fixed time has passed.
+type FixedAttemptStrategy struct {
 	Total time.Duration // total duration of attempt.
 	Delay time.Duration // interval between each try in the burst.
 	Min   int           // minimum number of retries; overrides Total
 }
 
-type Attempt struct {
-	strategy AttemptStrategy
+// FixedAttempt implements the Attempt interface for the FixedAttemptStrategy.
+type FixedAttempt struct {
+	strategy FixedAttemptStrategy
 	last     time.Time
 	end      time.Time
 	force    bool
@@ -22,9 +43,9 @@ type Attempt struct {
 }
 
 // Start begins a new sequence of attempts for the given strategy.
-func (s AttemptStrategy) Start() *Attempt {
+func (s FixedAttemptStrategy) Start() Attempt {
 	now := time.Now()
-	return &Attempt{
+	return &FixedAttempt{
 		strategy: s,
 		last:     now,
 		end:      now.Add(s.Total),
@@ -34,7 +55,7 @@ func (s AttemptStrategy) Start() *Attempt {
 
 // Next waits until it is time to perform the next attempt or returns
 // false if it is time to stop trying.
-func (a *Attempt) Next() bool {
+func (a *FixedAttempt) Next(err error) bool {
 	now := time.Now()
 	sleep := a.nextSleep(now)
 	if !a.force && !now.Add(sleep).Before(a.end) && a.strategy.Min <= a.count {
@@ -50,7 +71,7 @@ func (a *Attempt) Next() bool {
 	return true
 }
 
-func (a *Attempt) nextSleep(now time.Time) time.Duration {
+func (a *FixedAttempt) nextSleep(now time.Time) time.Duration {
 	sleep := a.strategy.Delay - now.Sub(a.last)
 	if sleep < 0 {
 		return 0
@@ -61,7 +82,7 @@ func (a *Attempt) nextSleep(now time.Time) time.Duration {
 // HasNext returns whether another attempt will be made if the current
 // one fails. If it returns true, the following call to Next is
 // guaranteed to return true.
-func (a *Attempt) HasNext() bool {
+func (a *FixedAttempt) HasNext() bool {
 	if a.force || a.strategy.Min > a.count {
 		return true
 	}

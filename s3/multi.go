@@ -60,14 +60,14 @@ func (b *Bucket) ListMulti(prefix, delim string) (multis []*Multi, prefixes []st
 		"prefix":      {prefix},
 		"delimiter":   {delim},
 	}
-	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(); {
+	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(err); {
 		req := &request{
 			method: "GET",
 			bucket: b.Name,
 			params: params,
 		}
 		var resp listMultiResp
-		err := b.S3.query(req, &resp)
+		err = b.S3.query(req, &resp)
 		if ShouldRetry(err) && attempt.HasNext() {
 			continue
 		}
@@ -150,7 +150,7 @@ func (b *Bucket) InitMultiWithOptions(key string, contType string, perm ACL, opt
 	var resp struct {
 		UploadId string `xml:"UploadId"`
 	}
-	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(); {
+	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(err); {
 		err = b.S3.query(req, &resp)
 		if !ShouldRetry(err) {
 			break
@@ -183,8 +183,9 @@ func (m *Multi) putPart(n int, r io.ReadSeeker, partSize int64, md5b64 string) (
 		"uploadId":   {m.UploadId},
 		"partNumber": {strconv.FormatInt(int64(n), 10)},
 	}
-	for attempt := m.Bucket.S3.AttemptStrategy.Start(); attempt.Next(); {
-		_, err := r.Seek(0, 0)
+	var err error
+	for attempt := m.Bucket.S3.AttemptStrategy.Start(); attempt.Next(err); {
+		_, err = r.Seek(0, 0)
 		if err != nil {
 			return Part{}, err
 		}
@@ -262,8 +263,11 @@ func (m *Multi) ListParts() ([]Part, error) {
 		"uploadId":  {m.UploadId},
 		"max-parts": {strconv.FormatInt(int64(listPartsMax), 10)},
 	}
-	var parts partSlice
-	for attempt := m.Bucket.S3.AttemptStrategy.Start(); attempt.Next(); {
+	var (
+		err error
+		parts partSlice
+	)
+	for attempt := m.Bucket.S3.AttemptStrategy.Start(); attempt.Next(err); {
 		req := &request{
 			method: "GET",
 			bucket: m.Bucket.Name,
@@ -271,7 +275,7 @@ func (m *Multi) ListParts() ([]Part, error) {
 			params: params,
 		}
 		var resp listPartsResp
-		err := m.Bucket.S3.query(req, &resp)
+		err = m.Bucket.S3.query(req, &resp)
 		if ShouldRetry(err) && attempt.HasNext() {
 			continue
 		}
@@ -381,7 +385,7 @@ func (m *Multi) Complete(parts []Part) error {
 	if err != nil {
 		return err
 	}
-	for attempt := m.Bucket.S3.AttemptStrategy.Start(); attempt.Next(); {
+	for attempt := m.Bucket.S3.AttemptStrategy.Start(); attempt.Next(err); {
 		req := &request{
 			method:  "POST",
 			bucket:  m.Bucket.Name,
@@ -389,7 +393,7 @@ func (m *Multi) Complete(parts []Part) error {
 			params:  params,
 			payload: bytes.NewReader(data),
 		}
-		err := m.Bucket.S3.query(req, nil)
+		err = m.Bucket.S3.query(req, nil)
 		if ShouldRetry(err) && attempt.HasNext() {
 			continue
 		}
@@ -417,14 +421,15 @@ func (m *Multi) Abort() error {
 	params := map[string][]string{
 		"uploadId": {m.UploadId},
 	}
-	for attempt := m.Bucket.S3.AttemptStrategy.Start(); attempt.Next(); {
+	var err error
+	for attempt := m.Bucket.S3.AttemptStrategy.Start(); attempt.Next(err); {
 		req := &request{
 			method: "DELETE",
 			bucket: m.Bucket.Name,
 			path:   m.Key,
 			params: params,
 		}
-		err := m.Bucket.S3.query(req, nil)
+		err = m.Bucket.S3.query(req, nil)
 		if ShouldRetry(err) && attempt.HasNext() {
 			continue
 		}

@@ -126,7 +126,7 @@ type CopyObjectResult struct {
 }
 
 // DefaultAttemptStrategy is the default AttemptStrategy used by S3 objects created by New.
-var DefaultAttemptStrategy = aws.AttemptStrategy{
+var DefaultAttemptStrategy = aws.FixedAttemptStrategy{
 	Min:   10,
 	Total: 10 * time.Second,
 	Delay: 200 * time.Millisecond,
@@ -243,7 +243,7 @@ func (b *Bucket) PutBucket(perm ACL) error {
 //
 // See http://goo.gl/GoBrY for details.
 func (b *Bucket) DelBucket() (err error) {
-	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(); {
+	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(err); {
 		req := &request{
 			method: "DELETE",
 			bucket: b.Name,
@@ -304,7 +304,7 @@ func (b *Bucket) GetResponseWithHeaders(path string, headers map[string][]string
 }
 
 func (b *Bucket) GetResponseWithHeadersAndTimeout(path string, headers map[string][]string, timeout time.Duration) (resp *http.Response, err error) {
-	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(); {
+	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(err); {
 		req := &request{
 			bucket:  b.Name,
 			path:    path,
@@ -315,7 +315,8 @@ func (b *Bucket) GetResponseWithHeadersAndTimeout(path string, headers map[strin
 		if err != nil {
 			return nil, err
 		}
-		resp, err := b.S3.run(req, nil)
+		var resp *http.Response
+		resp, err = b.S3.run(req, nil)
 		if ShouldRetry(err) && attempt.HasNext() {
 			continue
 		}
@@ -329,7 +330,7 @@ func (b *Bucket) GetResponseWithHeadersAndTimeout(path string, headers map[strin
 
 // Exists checks whether or not an object exists on an S3 bucket using a HEAD request.
 func (b *Bucket) Exists(path string) (exists bool, err error) {
-	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(); {
+	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(err); {
 		req := &request{
 			method: "HEAD",
 			bucket: b.Name,
@@ -339,7 +340,8 @@ func (b *Bucket) Exists(path string) (exists bool, err error) {
 		if err != nil {
 			return
 		}
-		resp, err := b.S3.run(req, nil)
+		var resp *http.Response
+		resp, err = b.S3.run(req, nil)
 
 		if ShouldRetry(err) && attempt.HasNext() {
 			continue
@@ -364,18 +366,20 @@ func (b *Bucket) Exists(path string) (exists bool, err error) {
 // Head HEADs an object in the S3 bucket, returns the response with
 // no body see http://bit.ly/17K1ylI
 func (b *Bucket) Head(path string, headers map[string][]string) (*http.Response, error) {
-	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(); {
+	var err error
+	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(err); {
 		req := &request{
 			method:  "HEAD",
 			bucket:  b.Name,
 			path:    path,
 			headers: headers,
 		}
-		err := b.S3.prepare(req)
+		err = b.S3.prepare(req)
 		if err != nil {
 			return nil, err
 		}
-		resp, err := b.S3.run(req, nil)
+		var resp *http.Response
+		resp, err = b.S3.run(req, nil)
 		if ShouldRetry(err) && attempt.HasNext() {
 			continue
 		}
@@ -728,7 +732,7 @@ func (b *Bucket) List(prefix, delim, marker string, max int) (result *ListResp, 
 		params["max-keys"] = []string{strconv.FormatInt(int64(max), 10)}
 	}
 	result = &ListResp{}
-	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(); {
+	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(err); {
 		req := &request{
 			bucket: b.Name,
 			params: params,
@@ -789,7 +793,7 @@ func (b *Bucket) Versions(prefix, delim, keyMarker string, versionIdMarker strin
 		params["max-keys"] = []string{strconv.FormatInt(int64(max), 10)}
 	}
 	result = &VersionsResp{}
-	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(); {
+	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(err); {
 		req := &request{
 			bucket: b.Name,
 			params: params,

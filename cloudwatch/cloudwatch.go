@@ -126,7 +126,7 @@ type MetricAlarm struct {
 	Unit                    string
 }
 
-var attempts = aws.AttemptStrategy{
+var attempts = aws.FixedAttemptStrategy{
 	Min:   5,
 	Total: 5 * time.Second,
 	Delay: 200 * time.Millisecond,

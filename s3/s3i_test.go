@@ -115,7 +115,7 @@ func testBucket(s *s3.S3) *s3.Bucket {
 	return s.Bucket(fmt.Sprintf("goamz-%s-%s", s.Region.Name, key))
 }
 
-var attempts = aws.AttemptStrategy{
+var attempts = aws.FixedAttemptStrategy{
 	Min:   5,
 	Total: 20 * time.Second,
 	Delay: 100 * time.Millisecond,
@@ -123,7 +123,7 @@ var attempts = aws.AttemptStrategy{
 
 func killBucket(b *s3.Bucket) {
 	var err error
-	for attempt := attempts.Start(); attempt.Next(); {
+	for attempt := attempts.Start(); attempt.Next(err); {
 		err = b.DelBucket()
 		if err == nil {
 			return
@@ -137,7 +137,8 @@ func killBucket(b *s3.Bucket) {
 		}
 		if ok && e.Code == "BucketNotEmpty" {
 			// Errors are ignored here. Just retry.
-			resp, err := b.List("", "", "", 1000)
+			var resp *s3.ListResp
+			resp, err = b.List("", "", "", 1000)
 			if err == nil {
 				for _, key := range resp.Contents {
 					_ = b.Del(key.Key)
@@ -157,15 +158,18 @@ func killBucket(b *s3.Bucket) {
 }
 
 func get(url string) ([]byte, error) {
-	for attempt := attempts.Start(); attempt.Next(); {
-		resp, err := http.Get(url)
+	var err error
+	for attempt := attempts.Start(); attempt.Next(err); {
+		var resp *http.Response
+		resp, err = http.Get(url)
 		if err != nil {
 			if attempt.HasNext() {
 				continue
 			}
 			return nil, err
 		}
-		data, err := ioutil.ReadAll(resp.Body)
+		var data []byte
+		data, err = ioutil.ReadAll(resp.Body)
 		resp.Body.Close()
 		if err != nil {
 			if attempt.HasNext() {
@@ -575,7 +579,7 @@ func (s *ClientTests) TestListMulti(c *C) {
 
 	multis, prefixes, err := b.ListMulti("", "")
 	c.Assert(err, IsNil)
-	for attempt := attempts.Start(); attempt.Next() && len(multis) < len(keys); {
+	for attempt := attempts.Start(); attempt.Next(err) && len(multis) < len(keys); {
 		multis, prefixes, err = b.ListMulti("", "")
 		c.Assert(err, IsNil)
 	}
@@ -592,7 +596,8 @@ func (s *ClientTests) TestListMulti(c *C) {
 	}
 
 	multis, prefixes, err = b.ListMulti("", "/")
-	for attempt := attempts.Start(); attempt.Next() && len(prefixes) < 2; {
+	c.Assert(err, IsNil)
+	for attempt := attempts.Start(); attempt.Next(err) && len(prefixes) < 2; {
 		multis, prefixes, err = b.ListMulti("", "")
 		c.Assert(err, IsNil)
 	}
@@ -603,7 +608,7 @@ func (s *ClientTests) TestListMulti(c *C) {
 	c.Assert(multis[0].Key, Equals, "multi1")
 	c.Assert(multis[0].UploadId, Matches, ".+")
 
-	for attempt := attempts.Start(); attempt.Next() && len(multis) < 2; {
+	for attempt := attempts.Start(); attempt.Next(err) && len(multis) < 2; {
 		multis, prefixes, err = b.ListMulti("", "")
 		c.Assert(err, IsNil)
 	}
