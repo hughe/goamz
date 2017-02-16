@@ -67,7 +67,7 @@ func sign(auth aws.Auth, method, canonicalPath string, params, headers map[strin
 		}
 	}
 	if len(sarray) > 0 {
-		sort.StringSlice(sarray).Sort()
+		HeaderStringSlice(sarray).Sort()
 		xamz = strings.Join(sarray, "\n") + "\n"
 	}
 
@@ -112,4 +112,30 @@ func sign(auth aws.Auth, method, canonicalPath string, params, headers map[strin
 		log.Printf("Signature payload: %q", payload)
 		log.Printf("Signature: %q", signature)
 	}
+}
+
+// HeaderStringSlice attaches the methods of Interface to []string, sorting by treating each string
+// as an HTTP header and sorting in increasing order of header name.
+// The value to compare is found by taking just the header name (up to the first ':' character).
+// NOTE: This can (and does) give a different sort order from sorting the entire string, fixing
+// a previous bug where headers would be sorted in incorrect order.
+type HeaderStringSlice []string
+
+func (p HeaderStringSlice) Len() int { return len(p) }
+
+func (p HeaderStringSlice) Less(i, j int) bool {
+	return headerNameFromString(p[i]) < headerNameFromString(p[j])
+}
+
+func (p HeaderStringSlice) Swap(i, j int) { p[i], p[j] = p[j], p[i] }
+
+// Sort is a convenience method.
+func (p HeaderStringSlice) Sort() { sort.Sort(p) }
+
+func headerNameFromString(full string) string {
+	split := strings.SplitN(full, ":", 2)
+	if len(split) == 0 {
+		return ""
+	}
+	return split[0]
 }

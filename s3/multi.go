@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"io"
 	"sort"
 	"strconv"
@@ -217,6 +218,58 @@ func (m *Multi) putPart(n int, r io.ReadSeeker, partSize int64, md5b64 string) (
 	panic("unreachable")
 }
 
+// Error represents an error in an operation with S3.
+type CopyPartResult struct {
+	LastModified string
+	ETag         string
+}
+
+// Uploads a part by copying a range from within an existing S3 object.
+// n is the part to upload (first part is number 1)
+// IMPORTANT NOTE: rangeEnd is the last byte *included* in the range, not the offset after the range.
+func (m *Multi) PutPartCopy(n int, source string, rangeStart, rangeEnd int64) (Part, error) {
+	sourceRange := fmt.Sprintf("bytes=%d-%d", rangeStart, rangeEnd)
+
+	headers := map[string][]string{
+		"x-amz-copy-source":       {source},
+		"x-amz-copy-source-range": {sourceRange},
+	}
+	params := map[string][]string{
+		"uploadId":   {m.UploadId},
+		"partNumber": {strconv.FormatInt(int64(n), 10)},
+	}
+	var err error
+	for attempt := m.Bucket.S3.AttemptStrategy.Start(); attempt.Next(err); {
+		req := &request{
+			method:  "PUT",
+			bucket:  m.Bucket.Name,
+			path:    m.Key,
+			headers: headers,
+			params:  params,
+		}
+		result := &CopyPartResult{}
+
+		err = m.Bucket.S3.prepare(req)
+		if err != nil {
+			return Part{}, err
+		}
+		_, err := m.Bucket.S3.run(req, result)
+		if ShouldRetry(err) && attempt.HasNext() {
+			continue
+		}
+		if err != nil {
+			return Part{}, err
+		}
+		etag := result.ETag
+		if etag == "" {
+			return Part{}, errors.New("part copy succeeded with no ETag")
+		}
+		partSize := (rangeEnd + 1) - rangeStart
+		return Part{n, etag, partSize}, nil
+	}
+	panic("unreachable")
+}
+
 func seekerInfo(r io.ReadSeeker) (size int64, md5hex string, md5b64 string, err error) {
 	_, err = r.Seek(0, 0)
 	if err != nil {
@@ -264,7 +317,7 @@ func (m *Multi) ListParts() ([]Part, error) {
 		"max-parts": {strconv.FormatInt(int64(listPartsMax), 10)},
 	}
 	var (
-		err error
+		err   error
 		parts partSlice
 	)
 	for attempt := m.Bucket.S3.AttemptStrategy.Start(); attempt.Next(err); {
