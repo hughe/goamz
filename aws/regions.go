@@ -241,3 +241,38 @@ var CNNorth = Region{
 	"https://cloudformation.cn-north-1.amazonaws.com.cn",
 	"https://ecs.cn-north-1.amazonaws.com.cn",
 }
+
+var USEast2 = Region{
+	Name:                 "us-east-2",
+	S3Endpoint:           "https://s3.us-east-2.amazonaws.com",
+	S3LocationConstraint: true,
+	S3LowercaseBucket:    true,
+}
+
+var CACentral = Region{
+	Name:                 "ca-central-1",
+	S3Endpoint:           "https://s3.ca-central-1.amazonaws.com",
+	S3LocationConstraint: true,
+	S3LowercaseBucket:    true,
+}
+
+var APSouth = Region{
+	Name:                 "ap-south-1",
+	S3Endpoint:           "https://s3.ap-south-1.amazonaws.com",
+	S3LocationConstraint: true,
+	S3LowercaseBucket:    true,
+}
+
+var APNortheast2 = Region{
+	Name:                 "ap-northeast-2",
+	S3Endpoint:           "https://s3.ap-northeast-2.amazonaws.com",
+	S3LocationConstraint: true,
+	S3LowercaseBucket:    true,
+}
+
+var EUWest2 = Region{
+	Name:                 "eu-west-2",
+	S3Endpoint:           "https://s3.eu-west-2.amazonaws.com",
+	S3LocationConstraint: true,
+	S3LowercaseBucket:    true,
+}
