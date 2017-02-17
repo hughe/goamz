@@ -74,6 +74,11 @@ var Regions = map[string]Region{
 	USGovWest.Name:    USGovWest,
 	SAEast.Name:       SAEast,
 	CNNorth.Name:      CNNorth,
+	USEast2.Name:      USEast2,
+	CACentral.Name:    CACentral,
+	APSouth.Name:      APSouth,
+	APNortheast2.Name: APNortheast2,
+	EUWest2.Name:      EUWest2,
 }
 
 // Designates a signer interface suitable for signing AWS requests, params
