@@ -945,16 +945,17 @@ func (b *Bucket) PostFormArgs(path string, expires time.Time, redirect string) (
 }
 
 type request struct {
-	method   string
-	bucket   string
-	path     string
-	signpath string
-	params   url.Values
-	headers  http.Header
-	baseurl  string
-	payload  io.Reader
-	prepared bool
-	timeout  time.Duration
+	method      string
+	bucket      string
+	path        string
+	signpath    string
+	params      url.Values
+	headers     http.Header
+	baseurl     string
+	payload     io.Reader
+	prepared    bool
+	timeout     time.Duration
+	rootCloneOp bool
 }
 
 func (req *request) url() (*url.URL, error) {
