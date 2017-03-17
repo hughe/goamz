@@ -1020,6 +1020,11 @@ func (s3 *S3) prepare(req *request) error {
 			req.path = "/" + req.path
 		}
 		signpath = req.path
+
+		if req.bucket == "" && req.baseurl == "" {
+			req.baseurl = s3.Region.S3Endpoint
+		}
+
 		if req.bucket != "" {
 			req.baseurl = s3.Region.S3BucketEndpoint
 			if req.baseurl == "" {
