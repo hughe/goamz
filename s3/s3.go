@@ -1076,14 +1076,23 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 		return nil, err
 	}
 
-	hreq := http.Request{
-		URL:        u,
-		Host:       u.Host,
-		Method:     req.method,
-		ProtoMajor: 1,
-		ProtoMinor: 1,
-		Close:      true,
-		Header:     req.headers,
+	var hreq http.Request
+	if req.method == "DELETE" {
+		hreqpntr, err := http.NewRequest("DELETE", u.String(), nil)
+		hreq = *hreqpntr
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		hreq = http.Request{
+			URL:        u,
+			Host:       u.Host,
+			Method:     req.method,
+			ProtoMajor: 1,
+			ProtoMinor: 1,
+			Close:      true,
+			Header:     req.headers,
+		}
 	}
 
 	if v, ok := req.headers["Content-Length"]; ok {
