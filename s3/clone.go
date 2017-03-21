@@ -43,6 +43,7 @@ func (b *Bucket) StartClone(srcBucket string) (cloneBucketResp *CloneBucketResp,
 			bucket: b.Name,
 		}
 		req.rootCloneOp = true
+		cloneBucketResp = &CloneBucketResp{}
 		err = b.S3.query(req, cloneBucketResp)
 
 		if !ShouldRetry(err) {
