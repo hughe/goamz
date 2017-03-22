@@ -1077,7 +1077,7 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 	}
 
 	var hreq http.Request
-	if req.method == "DELETE" {
+	if req.method == "DELETE" && (req.params["x-storreduce-abort-clone"] != nil || req.params["x-storreduce-complete-abort-clone"] != nil) {
 		hreqpntr, err := http.NewRequest("DELETE", u.String(), nil)
 		hreq = *hreqpntr
 		if err != nil {
