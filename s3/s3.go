@@ -11,6 +11,7 @@ package s3
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/md5"
 	"crypto/sha1"
@@ -161,28 +162,14 @@ func NewV4(auth aws.Auth, region aws.Region, client ...*http.Client) *S3 {
 // rootCAs is an optional set of root CA certificates is used for verifying server certificates
 // for HTTPS connections; nil means use the default system root CA set.
 func NewWithCustomRootCAs(auth aws.Auth, region aws.Region, rootCAs *x509.CertPool, client ...*http.Client) *S3 {
-
-	var httpclient *http.Client
-
-	if len(client) > 0 {
-		httpclient = client[0]
-	}
-
-	s3 := &S3{
-		Auth:            auth,
-		Region:          region,
-		AttemptStrategy: DefaultAttemptStrategy,
-		client:          httpclient,
-		rootCAs:         rootCAs,
-		signer:          NewV4Signer(auth, "s3", region),
-		v4sign:          false}
-	s3.signer.IncludeXAmzContentSha256 = true
+	s3 := New(auth, region, client...)
+	s3.rootCAs = rootCAs
 	return s3
 }
 
 func NewWithCustomRootCAsV4(auth aws.Auth, region aws.Region, rootCAs *x509.CertPool, client ...*http.Client) *S3 {
-	s3 := NewWithCustomRootCAs(auth, region, rootCAs, client...)
-	s3.v4sign = true
+	s3 := NewV4(auth, region, client...)
+	s3.rootCAs = rootCAs
 	return s3
 }
 
@@ -1076,38 +1063,44 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 		return nil, err
 	}
 
-	var hreq http.Request
-	if req.method == "DELETE" && (req.params["x-storreduce-abort-clone"] != nil || req.params["x-storreduce-complete-abort-clone"] != nil) {
-		hreqpntr, err := http.NewRequest("DELETE", u.String(), nil)
-		hreq = *hreqpntr
+	var hreq *http.Request
+	if req.method == "DELETE" && (req.params["x-storreduce-abort-clone"] != nil ||
+		req.params["x-storreduce-complete-abort-clone"] != nil) {
+		hreq, err = http.NewRequest("DELETE", u.String(), nil)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		hreq = http.Request{
+		hreq = &http.Request{
 			URL:        u,
 			Host:       u.Host,
 			Method:     req.method,
 			ProtoMajor: 1,
 			ProtoMinor: 1,
-			Close:      true,
 			Header:     req.headers,
 		}
+	}
+
+	if req.timeout != 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), req.timeout)
+		defer cancel()
+		hreq = hreq.WithContext(ctx)
 	}
 
 	if v, ok := req.headers["Content-Length"]; ok {
 		hreq.ContentLength, _ = strconv.ParseInt(v[0], 10, 64)
 		delete(req.headers, "Content-Length")
 	}
+
 	if req.payload != nil {
 		hreq.Body = ioutil.NopCloser(req.payload)
 	}
 
 	if s3.v4sign {
-		s3.signer.Sign(&hreq)
+		s3.signer.Sign(hreq)
 	}
-	var httpClient *http.Client
 
+	var httpClient *http.Client
 	if s3.client != nil {
 		httpClient = s3.client
 	} else {
@@ -1167,10 +1160,11 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 		startTime = time.Now()
 	}
 
-	hresp, err := httpClient.Do(&hreq)
+	hresp, err := httpClient.Do(hreq)
 	if err != nil {
 		return nil, err
 	}
+
 	if Debug {
 		endTime := time.Now()
 		dt := endTime.Sub(startTime)
@@ -1178,11 +1172,13 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 			time.Now().UTC().Format("2006/01/02 15:04:05.000"),
 			hreq.Method, hreq.URL, dt, hresp.Status, hresp.Header, err)
 	}
+
 	// Allow for any 2xx series status code; else, build an error.s
 	if hresp.StatusCode < 200 || hresp.StatusCode >= 300 {
 		defer hresp.Body.Close()
 		return nil, buildError(hresp)
 	}
+
 	if resp != nil {
 		err = xml.NewDecoder(hresp.Body).Decode(resp)
 		hresp.Body.Close()
@@ -1190,6 +1186,7 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 			log.Printf("goamz.s3> decoded xml into %#v", resp)
 		}
 	}
+
 	return hresp, err
 }
 
