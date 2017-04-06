@@ -1081,12 +1081,6 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 		}
 	}
 
-	if req.timeout != 0 {
-		ctx, cancel := context.WithTimeout(context.Background(), req.timeout)
-		defer cancel()
-		hreq = hreq.WithContext(ctx)
-	}
-
 	if v, ok := req.headers["Content-Length"]; ok {
 		hreq.ContentLength, _ = strconv.ParseInt(v[0], 10, 64)
 		delete(req.headers, "Content-Length")
@@ -1102,8 +1096,24 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 
 	var httpClient *http.Client
 	if s3.client != nil {
+		// This is the preferred option as constructing a client/transport for every
+		// request is generally a bad idea.
 		httpClient = s3.client
+
+		// When using a user-supplied http client we don't want to mess with the
+		// underlying transport/net.Conn (as we want connection pooling) so use
+		// contexts to achieve a per-request timeout.
+		if req.timeout != 0 {
+			ctx, cancel := context.WithTimeout(context.Background(), req.timeout)
+			defer cancel()
+			hreq = hreq.WithContext(ctx)
+		}
 	} else {
+		// Close should be set to true here as the logic below constructs a transport
+		// for every http request so connection pooling doesn't work.
+		// We can at least be kind to the down stream server by letting them know
+		// we won't be reusing the connection. This code should be yanked a some point.
+		hreq.Close = true
 		httpClient = &http.Client{
 			Transport: &http.Transport{
 				Proxy: http.ProxyFromEnvironment,
