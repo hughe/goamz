@@ -1086,11 +1086,9 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 		delete(req.headers, "Content-Length")
 	}
 
-	// In go 1.8+ we must explicitly signal that there is no body - the runtime
-	// will not attempt to snif the Body property to figure this out.
-	if req.payload == nil || hreq.ContentLength == 0 {
-		hreq.Body = http.NoBody
-	} else {
+	// In go 1.8+ we must explicitly signal that there is no body by leaving body
+	// nil - the runtime will not attempt to snif the Body property to figure this out.
+	if req.payload != nil && hreq.ContentLength > 0 {
 		hreq.Body = ioutil.NopCloser(req.payload)
 	}
 
