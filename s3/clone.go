@@ -1,11 +1,16 @@
 package s3
 
 type ListClonesInProgressResult struct {
-	ClonesInProgress []string // array of UUIDs
+	ClonesInProgress []CloneInProgress // array of UUIDs
+}
+type CloneInProgress struct {
+	CloneId    string
+	SrcBucket  string
+	DestBucket string
 }
 
 // Note: This will list all in-progress clone jobs across ALL buckets
-func (s3 *S3) ListClones() (clones []string, err error) {
+func (s3 *S3) ListClones() (clones []CloneInProgress, err error) {
 	params := map[string][]string{
 		"x-storreduce-clones-in-progress": []string{""},
 	}
