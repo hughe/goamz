@@ -129,15 +129,18 @@ func (s3 *S3) CompleteAbortClone(cloneId string) (err error) {
 	return nil
 }
 
-type statusReport struct {
-	//DebugSampleCloneBucketState database.CloneBucketState
-	RawStateOr  int32
-	RawStateAnd int32
-	State       string
-	Message     string
+type StatusReport struct {
+	InternalStateOr__  int32
+	InternalStateAnd__ int32
+	State              string
+	Description        string
+	SrcBucket          string `xml:",omitempty"`
+	DestBucket         string `xml:",omitempty"`
+	KeysCloned         int64  `xml:",omitempty"`
+	KeysReverted       int64  `xml:",omitempty"`
 }
 
-func (s3 *S3) GetCloneStatus(cloneId string) (resp *statusReport, err error) {
+func (s3 *S3) GetCloneStatus(cloneId string) (resp *StatusReport, err error) {
 	params := map[string][]string{
 		"x-storreduce-clone-status": []string{cloneId},
 	}
@@ -146,7 +149,7 @@ func (s3 *S3) GetCloneStatus(cloneId string) (resp *statusReport, err error) {
 			method: "GET",
 			params: params,
 		}
-		resp = &statusReport{}
+		resp = &StatusReport{}
 		req.rootCloneOp = true
 
 		err = s3.query(req, resp)
