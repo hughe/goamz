@@ -19,6 +19,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -281,7 +282,7 @@ func (b *Bucket) GetResponse(path string) (resp *http.Response, err error) {
 	return b.GetResponseWithHeaders(path, make(http.Header))
 }
 
-// GetReaderWithHeaders retrieves an object from an S3 bucket
+// GetResponseWithHeaders retrieves an object from an S3 bucket
 // Accepts custom headers to be sent as the second parameter
 // returning the body of the HTTP response.
 // It is the caller's responsibility to call Close on rc when
@@ -291,12 +292,21 @@ func (b *Bucket) GetResponseWithHeaders(path string, headers map[string][]string
 }
 
 func (b *Bucket) GetResponseWithHeadersAndTimeout(path string, headers map[string][]string, timeout time.Duration) (resp *http.Response, err error) {
+	return b.doGetResponseWithHeaders(nil, path, headers, timeout)
+}
+
+func (b *Bucket) GetResponseWithHeadersAndContext(ctx context.Context, path string, headers map[string][]string) (resp *http.Response, err error) {
+	return b.doGetResponseWithHeaders(ctx, path, headers, 0)
+}
+
+func (b *Bucket) doGetResponseWithHeaders(ctx context.Context, path string, headers map[string][]string, timeout time.Duration) (resp *http.Response, err error) {
 	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(err); {
 		req := &request{
 			bucket:  b.Name,
 			path:    path,
 			headers: headers,
 			timeout: timeout,
+			context: ctx,
 		}
 		err = b.S3.prepare(req)
 		if err != nil {
@@ -444,6 +454,14 @@ func (b *Bucket) PutReaderHeader(path string, r io.Reader, length int64, customH
 }
 
 func (b *Bucket) PutReaderHeaderTimeout(path string, r io.Reader, length int64, customHeaders map[string][]string, perm ACL, timeout time.Duration) error {
+	return b.doPutReaderHeaderTimeout(nil, path, r, length, customHeaders, perm, timeout)
+}
+
+func (b *Bucket) PutReaderHeaderWithContext(ctx context.Context, path string, r io.Reader, length int64, customHeaders map[string][]string, perm ACL) error {
+	return b.doPutReaderHeaderTimeout(ctx, path, r, length, customHeaders, perm, 0)
+}
+
+func (b *Bucket) doPutReaderHeaderTimeout(ctx context.Context, path string, r io.Reader, length int64, customHeaders map[string][]string, perm ACL, timeout time.Duration) error {
 	// Default headers
 	headers := map[string][]string{
 		"Content-Length": {strconv.FormatInt(length, 10)},
@@ -463,6 +481,7 @@ func (b *Bucket) PutReaderHeaderTimeout(path string, r io.Reader, length int64, 
 		headers: headers,
 		payload: r,
 		timeout: timeout,
+		context: ctx,
 	}
 	return b.S3.query(req, nil)
 }
@@ -941,6 +960,7 @@ type request struct {
 	baseurl     string
 	payload     io.Reader
 	prepared    bool
+	context     context.Context
 	timeout     time.Duration
 	rootCloneOp bool
 }
@@ -1104,9 +1124,12 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 		// underlying transport/net.Conn (as we want connection pooling) so use
 		// contexts to achieve a per-request timeout.
 		if req.timeout != 0 {
-			ctx, cancel := context.WithTimeout(context.Background(), req.timeout)
-			defer cancel()
-			hreq = hreq.WithContext(ctx)
+			return nil, errors.New("Timeouts must be specified using contexts when " +
+				"using a custom HTTP client.")
+		}
+
+		if req.context != nil {
+			hreq = hreq.WithContext(req.context)
 		}
 	} else {
 		// Close should be set to true here as the logic below constructs a transport
@@ -1114,6 +1137,11 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 		// We can at least be kind to the down stream server by letting them know
 		// we won't be reusing the connection. This code should be yanked a some point.
 		hreq.Close = true
+
+		if req.context != nil {
+			return nil, errors.New("Contexts are not supported when using the internal HTTP client.")
+		}
+
 		httpClient = &http.Client{
 			Transport: &http.Transport{
 				Proxy: http.ProxyFromEnvironment,
