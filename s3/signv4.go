@@ -194,18 +194,19 @@ func (s *V4Signer) signedHeaders(h http.Header) string {
 }
 
 func (s *V4Signer) payloadHash(req *http.Request) string {
-	var b []byte
-	if req.Body == nil {
-		b = []byte("")
-	} else {
+	// NOTE: do not reassign the body if it is nil - it breaks the go 1.8 http
+	// client's content-length logic. If it sees a body populated, but
+	// content-length is 0, it will assume transfer encoding chunked.
+	b := []byte{}
+	if req.Body != nil {
 		var err error
 		b, err = ioutil.ReadAll(req.Body)
 		if err != nil {
 			// TODO: I REALLY DON'T LIKE THIS PANIC!!!!
 			panic(err)
 		}
+		req.Body = ioutil.NopCloser(bytes.NewBuffer(b))
 	}
-	req.Body = ioutil.NopCloser(bytes.NewBuffer(b))
 	return s.hash(string(b))
 }
 
