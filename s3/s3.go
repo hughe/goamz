@@ -287,20 +287,42 @@ func (b *Bucket) GetResponse(path string) (resp *http.Response, err error) {
 // returning the body of the HTTP response.
 // It is the caller's responsibility to call Close on rc when
 // finished reading
-func (b *Bucket) GetResponseWithHeaders(path string, headers map[string][]string) (resp *http.Response, err error) {
-	return b.GetResponseWithHeadersAndTimeout(path, headers, 0)
+func (b *Bucket) GetResponseWithHeaders(
+	path string,
+	headers map[string][]string,
+) (resp *http.Response, err error) {
+	return b.doGetResponseWithHeaders(nil, path, headers, 0, true)
 }
 
-func (b *Bucket) GetResponseWithHeadersAndTimeout(path string, headers map[string][]string, timeout time.Duration) (resp *http.Response, err error) {
-	return b.doGetResponseWithHeaders(nil, path, headers, timeout)
+// If attemptRetry is true then errors will be retried using the AttemptStrategy set on b.S3.
+// If attemptRetry is false then only one attempt will be made (no retries).
+func (b *Bucket) GetResponseWithHeadersAndContext(
+	ctx context.Context,
+	path string,
+	headers map[string][]string,
+	attemptRetry bool,
+) (resp *http.Response, err error) {
+	return b.doGetResponseWithHeaders(ctx, path, headers, 0, attemptRetry)
 }
 
-func (b *Bucket) GetResponseWithHeadersAndContext(ctx context.Context, path string, headers map[string][]string) (resp *http.Response, err error) {
-	return b.doGetResponseWithHeaders(ctx, path, headers, 0)
-}
+// If attemptRetry is true then errors will be retried using the AttemptStrategy set on b.S3.
+// If attemptRetry is false then only one attempt will be made (no retries).
+func (b *Bucket) doGetResponseWithHeaders(
+	ctx context.Context,
+	path string,
+	headers map[string][]string,
+	timeout time.Duration,
+	attemptRetry bool,
+) (resp *http.Response, err error) {
+	// Work out which retry strategy to use
+	var strategy aws.AttemptStrategy
+	if attemptRetry {
+		strategy = b.S3.AttemptStrategy
+	} else {
+		strategy = &aws.OneAttemptStrategy{}
+	}
 
-func (b *Bucket) doGetResponseWithHeaders(ctx context.Context, path string, headers map[string][]string, timeout time.Duration) (resp *http.Response, err error) {
-	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(err); {
+	for attempt := strategy.Start(); attempt.Next(err); {
 		req := &request{
 			bucket:  b.Name,
 			path:    path,
@@ -1423,6 +1445,10 @@ func shouldRetryAlmostAll(err error) bool {
 			// Anyway whatever causes it, it's not a bad request.
 			if e.StatusCode == http.StatusBadRequest && e.Code == "" {
 				return true
+			}
+
+			if Debug {
+				log.Printf("shouldRetryAlmostAll: Not retrying status code %d", e.StatusCode)
 			}
 
 			return false

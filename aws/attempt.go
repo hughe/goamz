@@ -93,3 +93,29 @@ func (a *FixedAttempt) HasNext() bool {
 	}
 	return false
 }
+
+// OneAttemptStrategy implements AttemptStrategy and allows only a single attempt before giving up.
+type OneAttemptStrategy struct {
+}
+
+// OneAttempt implements the Attempt interface for the OneAttemptStrategy (only one attempt before giving up).
+type OneAttempt struct {
+	count int // number of attempts so far
+}
+
+func (s OneAttemptStrategy) Start() Attempt {
+	return &OneAttempt{count: 0}
+}
+
+func (a *OneAttempt) Next(err error) bool {
+	if a.count == 0 {
+		a.count++
+		return true
+	} else {
+		return false
+	}
+}
+
+func (a *OneAttempt) HasNext() bool {
+	return a.count == 0
+}
