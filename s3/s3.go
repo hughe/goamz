@@ -37,6 +37,8 @@ import (
 
 var Debug = false
 
+var SRRequestLogger func(context.Context, *http.Request, *http.Response, time.Duration, error)
+
 // The S3 type encapsulates operations with an S3 region.
 type S3 struct {
 	aws.Auth
@@ -1212,22 +1214,28 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 		}
 	}
 
-	var startTime time.Time
 	if Debug {
 		log.Printf("%s GoAMZ Running S3 Request: %s %s %s",
 			time.Now().UTC().Format("2006/01/02 15:04:05.000"),
 			hreq.Method, hreq.URL, hreq.Header)
-		startTime = time.Now()
 	}
 
+	startTime := time.Now()
 	hresp, err := httpClient.Do(hreq)
+	dt := time.Since(startTime)
+
+	srLog := func(ierr error) {
+		if SRRequestLogger != nil {
+			SRRequestLogger(req.context, hreq, hresp, dt, ierr)
+		}
+	}
+
 	if err != nil {
+		srLog(err)
 		return nil, err
 	}
 
 	if Debug {
-		endTime := time.Now()
-		dt := endTime.Sub(startTime)
 		log.Printf("%s GoAMZ Response to S3 Request: %s %s %s %s %s %#v",
 			time.Now().UTC().Format("2006/01/02 15:04:05.000"),
 			hreq.Method, hreq.URL, dt, hresp.Status, hresp.Header, err)
@@ -1236,7 +1244,9 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 	// Allow for any 2xx series status code; else, build an error.s
 	if hresp.StatusCode < 200 || hresp.StatusCode >= 300 {
 		defer hresp.Body.Close()
-		return nil, buildError(hresp)
+		err = buildError(hresp)
+		srLog(err)
+		return nil, err
 	}
 
 	if resp != nil {
@@ -1246,6 +1256,8 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 			log.Printf("goamz.s3> decoded xml into %#v", resp)
 		}
 	}
+
+	srLog(err)
 
 	return hresp, err
 }
