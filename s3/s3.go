@@ -37,6 +37,8 @@ import (
 
 var Debug = false
 
+var SRRequestLogger func(context.Context, *http.Request, *http.Response, error)
+
 // The S3 type encapsulates operations with an S3 region.
 type S3 struct {
 	aws.Auth
@@ -1221,7 +1223,15 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 	}
 
 	hresp, err := httpClient.Do(hreq)
+
+	srLog := func(ierr error) {
+		if SRRequestLogger != nil {
+			SRRequestLogger(req.context, hreq, hresp, ierr)
+		}
+	}
+
 	if err != nil {
+		srLog(err)
 		return nil, err
 	}
 
@@ -1236,7 +1246,9 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 	// Allow for any 2xx series status code; else, build an error.s
 	if hresp.StatusCode < 200 || hresp.StatusCode >= 300 {
 		defer hresp.Body.Close()
-		return nil, buildError(hresp)
+		err = buildError(hresp)
+		srLog(err)
+		return nil, err
 	}
 
 	if resp != nil {
@@ -1246,6 +1258,8 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 			log.Printf("goamz.s3> decoded xml into %#v", resp)
 		}
 	}
+
+	srLog(err)
 
 	return hresp, err
 }
