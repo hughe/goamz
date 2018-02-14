@@ -3,13 +3,13 @@ package s3
 import (
 	"bytes"
 	"encoding/xml"
+	"errors"
 	"sort"
 )
 
 type Tagging struct {
 	XMLName xml.Name `xml:"Tagging"`
-	//XmlNs   string   `xml:"xmlns,attr"` // Ugly hack
-	TagSet []Tag `xml:"TagSet>Tag"`
+	TagSet  []Tag    `xml:"TagSet>Tag"`
 }
 
 type Tag struct {
@@ -23,7 +23,16 @@ func (s byKey) Len() int           { return len(s) }
 func (s byKey) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 func (s byKey) Less(i, j int) bool { return s[i].Key < s[j].Key }
 
+// Set the tags on object key in bucket b.
+//
+// NOTE: this only works if SigV4 is enabled.  I think SigV2 signing
+// code does not handle the ?tagging parameter on the URL properly.
+// Not a big deal for what we use tagging for.
 func (b *Bucket) PutObjectTagging(key string, tagSet map[string]string) error {
+	if !b.S3.v4sign {
+		return errors.New("SigV4 only")
+	}
+
 	tSet := make([]Tag, 0, len(tagSet))
 
 	for k, v := range tagSet {
@@ -34,15 +43,12 @@ func (b *Bucket) PutObjectTagging(key string, tagSet map[string]string) error {
 
 	t := Tagging{
 		TagSet: tSet,
-		//XmlNs:  "http://s3.amazonaws.com/doc/2006-03-01/",
 	}
 
 	data, err := xml.Marshal(&t)
 	if err != nil {
 		return err
 	}
-
-	//fmt.Printf("data = %#v\n", string(data))
 
 	params := map[string][]string{
 		"tagging": {""},
@@ -65,7 +71,16 @@ func (b *Bucket) PutObjectTagging(key string, tagSet map[string]string) error {
 	panic("unreachable")
 }
 
+// Get the tags assoicated with key in bucket b.
+
+// NOTE: this only works if SigV4 is enabled.  I think SigV2 signing
+// code does not handle the ?tagging parameter on the URL properly.
+// Not a big deal for what we use tagging for.
 func (b *Bucket) GetObjectTagging(key string) (tagSet map[string]string, err error) {
+	if !b.S3.v4sign {
+		return nil, errors.New("SigV4 only")
+	}
+
 	params := map[string][]string{
 		"tagging": {""},
 	}

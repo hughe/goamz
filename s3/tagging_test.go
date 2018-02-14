@@ -1,18 +1,20 @@
 package s3_test
 
 import (
-	"fmt"
-
 	"github.com/hughe/goamz/s3"
 	. "gopkg.in/check.v1"
 )
 
 func (s *ClientTests) TestTagging(c *C) {
+	if !s.isV4 {
+		c.Skip("NoSigV4")
+	}
+
 	b := testBucket(s.s3)
 	err := b.PutBucket(s3.PublicRead)
 	c.Assert(err, IsNil)
 
-	fmt.Printf("b.Name = %#v\n", b.Name)
+	//fmt.Printf("b.Name = %#v\n", b.Name)
 
 	err = b.Put("name", []byte("yo!"), "text/plain", s3.PublicRead, s3.Options{})
 	c.Assert(err, IsNil)
