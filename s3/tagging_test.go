@@ -25,4 +25,9 @@ func (s *ClientTests) TestTagging(c *C) {
 	err = b.PutObjectTagging("name", tagSet)
 	c.Assert(err, IsNil)
 
+	res, err := b.GetObjectTagging("name")
+	c.Assert(err, IsNil)
+
+	c.Assert(res, DeepEquals, tagSet)
+
 }
