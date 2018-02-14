@@ -110,3 +110,28 @@ func (b *Bucket) GetObjectTagging(key string) (tagSet map[string]string, err err
 
 	return tagSet, nil
 }
+
+func (b *Bucket) DeleteObjectTagging(key string) (err error) {
+	if !b.S3.v4sign {
+		return errors.New("SigV4 only")
+	}
+
+	params := map[string][]string{
+		"tagging": {""},
+	}
+
+	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(err); {
+		req := &request{
+			method: "DELETE",
+			bucket: b.Name,
+			path:   key,
+			params: params,
+		}
+		err = b.S3.query(req, nil)
+		if ShouldRetry(err) && attempt.HasNext() {
+			continue
+		}
+		return err
+	}
+	panic("unreachable")
+}

@@ -44,6 +44,17 @@ func (s *ClientTests) TestTagging(c *C) {
 	res, err = b.GetObjectTagging("name")
 	c.Assert(err, IsNil)
 
+	//fmt.Printf("res = %#v\n", res)
+
 	c.Assert(res, DeepEquals, biggerSet)
 
+	err = b.DeleteObjectTagging("name")
+	c.Assert(err, IsNil)
+
+	res, err = b.GetObjectTagging("name")
+	c.Assert(err, IsNil)
+
+	empty := map[string]string{}
+
+	c.Assert(res, DeepEquals, empty)
 }
