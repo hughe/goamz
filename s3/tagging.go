@@ -3,11 +3,13 @@ package s3
 import (
 	"bytes"
 	"encoding/xml"
+	"sort"
 )
 
 type Tagging struct {
 	XMLName xml.Name `xml:"Tagging"`
-	TagSet  []Tag    `xml:"TagSet"`
+	//XmlNs   string   `xml:"xmlns,attr"` // Ugly hack
+	TagSet []Tag `xml:"TagSet>Tag"`
 }
 
 type Tag struct {
@@ -15,21 +17,38 @@ type Tag struct {
 	Value string
 }
 
-func (b *Bucket) PutObjectTagging(key string, tagSet []Tag) error {
-	tagging := Tagging{
-		TagSet: tagSet,
+type byKey []Tag
+
+func (s byKey) Len() int           { return len(s) }
+func (s byKey) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+func (s byKey) Less(i, j int) bool { return s[i].Key < s[j].Key }
+
+func (b *Bucket) PutObjectTagging(key string, tagSet map[string]string) error {
+	tSet := make([]Tag, 0, len(tagSet))
+
+	for k, v := range tagSet {
+		tSet = append(tSet, Tag{Key: k, Value: v})
 	}
 
-	data, err := xml.Marshal(&tagging)
+	sort.Sort(byKey(tSet))
+
+	t := Tagging{
+		TagSet: tSet,
+		//XmlNs:  "http://s3.amazonaws.com/doc/2006-03-01/",
+	}
+
+	data, err := xml.Marshal(&t)
 	if err != nil {
 		return err
 	}
+
+	//fmt.Printf("data = %#v\n", string(data))
 
 	params := map[string][]string{
 		"tagging": {""},
 	}
 
-	for attempt := m.Bucket.S3.AttemptStrategy.Start(); attempt.Next(err); {
+	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(err); {
 		req := &request{
 			method:  "PUT",
 			bucket:  b.Name,
@@ -37,7 +56,7 @@ func (b *Bucket) PutObjectTagging(key string, tagSet []Tag) error {
 			params:  params,
 			payload: bytes.NewReader(data),
 		}
-		err = m.Bucket.S3.query(req, nil)
+		err = b.S3.query(req, nil)
 		if ShouldRetry(err) && attempt.HasNext() {
 			continue
 		}
@@ -46,20 +65,20 @@ func (b *Bucket) PutObjectTagging(key string, tagSet []Tag) error {
 	panic("unreachable")
 }
 
-func (b *Bucket) GetObjectTagging(key string) (tagSet []Tag, err error) {
+func (b *Bucket) GetObjectTagging(key string) (tagSet map[string]string, err error) {
 	params := map[string][]string{
 		"tagging": {""},
 	}
 
 	result := &Tagging{}
 
-	for attempt := m.Bucket.S3.AttemptStrategy.Start(); attempt.Next(err); {
+	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(err); {
 		req := &request{
 			bucket: b.Name,
 			path:   key,
 			params: params,
 		}
-		err = m.Bucket.S3.query(req, result)
+		err = b.S3.query(req, result)
 		if !ShouldRetry(err) {
 			break
 		}
@@ -68,5 +87,11 @@ func (b *Bucket) GetObjectTagging(key string) (tagSet []Tag, err error) {
 		return nil, err
 	}
 
-	return result.TagSet, nil
+	tagSet = make(map[string]string, len(result.TagSet))
+
+	for _, tag := range result.TagSet {
+		tagSet[tag.Key] = tag.Value
+	}
+
+	return tagSet, nil
 }
