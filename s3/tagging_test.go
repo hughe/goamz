@@ -30,4 +30,18 @@ func (s *ClientTests) TestTagging(c *C) {
 
 	c.Assert(res, DeepEquals, tagSet)
 
+	biggerSet := map[string]string{
+		"tag2": "val2",
+		"tag3": "val3",
+		"tag4": "val4",
+	}
+
+	err = b.PutObjectTagging("name", biggerSet)
+	c.Assert(err, IsNil)
+
+	res, err = b.GetObjectTagging("name")
+	c.Assert(err, IsNil)
+
+	c.Assert(res, DeepEquals, biggerSet)
+
 }
