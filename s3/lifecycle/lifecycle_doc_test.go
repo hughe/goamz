@@ -2,9 +2,9 @@ package lifecycle_test
 
 import (
 	"encoding/xml"
+	"fmt"
 	"testing"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/hughe/goamz/s3/lifecycle"
 
 	. "gopkg.in/check.v1"
@@ -38,13 +38,27 @@ const lcExample = `<LifecycleConfiguration xmlns="http://s3.amazonaws.com/doc/20
     </Rule>
 </LifecycleConfiguration>`
 
+// <LifecycleConfiguration>
+// 	 <Rule>
+// 	   <ID>Test Lifecycle</ID>
+// 	   <Filter>
+// 	     <Prefix>0000/S00</Prefix>
+// 	   </Filter>
+// 	   <Status>Enabled</Status>
+// 	   <Transition>
+// 	     <Days>2</Days>
+// 	     <StorageClass>GLACIER</StorageClass>
+// 	   </Transition>
+// 	 </Rule>
+// </LifecycleConfiguration>
+
 func (_ *unmarshTests) TestUnmarshal(c *C) {
 
 	x := lifecycle.Configuration{}
 	err := xml.Unmarshal([]byte(lcExample), &x)
 	c.Assert(err, IsNil)
 
-	spew.Dump(x)
+	//	spew.Dump(x)
 
 	unc := x.IsUnclean()
 	c.Assert(unc, Equals, false)
@@ -56,5 +70,33 @@ func (_ *unmarshTests) TestUnmarshal(c *C) {
 	c.Check(r.Status, Equals, "Enabled")
 	c.Check(r.Transitions, HasLen, 2)
 	c.Check(*r.Transitions[0].Days, Equals, 30)
+}
+
+func (_ *unmarshTests) TestMarshal(c *C) {
+	id := "Test Lifecycle"
+	prefix := "0000/S00"
+	days := 2
+
+	lc := lifecycle.Configuration{
+		Rules: []lifecycle.Rule{
+			{
+				ID: &id,
+				Filter: &lifecycle.Filter{
+					Prefix: &prefix,
+				},
+				Status: "Enabled",
+				Transitions: []lifecycle.Transition{
+					{
+						StorageClass: "GLACIER",
+						Days:         &days,
+					},
+				},
+			},
+		},
+	}
+
+	data, err := xml.Marshal(&lc)
+	c.Assert(err, IsNil)
+	fmt.Printf("data = %#v\n", string(data))
 
 }
