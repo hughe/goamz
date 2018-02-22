@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
+	"time"
 )
 
 type GlacierJobParameters struct {
@@ -77,5 +79,85 @@ func (b *Bucket) RestoreObject(key string, days uint, tier Tier) (started bool, 
 		return statusCode == http.StatusAccepted, err
 	}
 	panic("unreachable")
+}
 
+type StorageClass string
+
+const (
+	STANDARD    = "STANDARD"
+	STANDARD_IA = "STANDARD_IA"
+	GLACIER     = "GLACIER"
+)
+
+type RestoreStatus struct {
+	OnGoingRequest bool
+	ExpiryDate     time.Time
+	StorageClass   string
+}
+
+func (r RestoreStatus) IsBeingRestored() bool {
+	return r.OnGoingRequest
+}
+
+func (r RestoreStatus) HasBeenRestored() bool {
+	if !r.OnGoingRequest {
+		return r.ExpiryDate.IsZero()
+	}
+	return false
+}
+
+var restoreRe = regexp.MustCompile(`ongoing-request="(true|false)"(, expiry-date="([^"]*)")?`)
+
+func (r *RestoreStatus) ParseAmzRestore(s string) (err error) {
+	c := restoreRe.Copy()
+	parts := c.FindStringSubmatch(s)
+	if parts == nil {
+		return fmt.Errorf("Unable to parse X-AMZ-Restore header: %q", s)
+	}
+
+	// len(parts) == 4
+
+	switch parts[1] {
+	case "true":
+		r.OnGoingRequest = true
+	case "false":
+		r.OnGoingRequest = false
+	default:
+		return fmt.Errorf("Unable to parse X-AMZ-Restore header: %q", s)
+	}
+
+	if parts[3] != "" {
+		r.ExpiryDate, err = time.Parse(time.RFC1123, parts[3])
+		if err != nil {
+			r.ExpiryDate, err = time.Parse(time.RFC1123Z, parts[3])
+		}
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (b *Bucket) GetRestoreStatus(key string) (status RestoreStatus, err error) {
+	resp, err := b.Head(key, nil)
+	if err != nil {
+		return status, err
+	}
+
+	sc := resp.Header.Get("X-Amz-Storage-Class")
+
+	if sc == "" {
+		status.StorageClass = STANDARD
+	} else {
+		status.StorageClass = sc
+	}
+
+	rs := resp.Header.Get("X-Amz-Restore")
+
+	if rs != "" {
+		err = status.ParseAmzRestore(rs)
+	}
+
+	return status, err
 }

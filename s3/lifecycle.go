@@ -64,6 +64,9 @@ func (b *Bucket) PutLifecycle(lc *lifecycle.Configuration) (err error) {
 		"Content-Type":   {"text/xml"},
 	}
 
+	// Can't use PutBucketSubresource because it does not provide set
+	// the Content-MD5 header, or retry.
+
 	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(err); {
 		req := &request{
 			method:  "PUT",
