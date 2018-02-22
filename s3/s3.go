@@ -1003,12 +1003,23 @@ func (req *request) url() (*url.URL, error) {
 // If resp is not nil, the XML data contained in the response
 // body will be unmarshalled on it.
 func (s3 *S3) query(req *request, resp interface{}) error {
+	_, err := s3.queryWithStatus(req, resp)
+	return err
+}
+
+func (s3 *S3) queryWithStatus(req *request, resp interface{}) (int, error) {
+	var statusCode int
 	err := s3.prepare(req)
+
 	if err == nil {
 		var httpResponse *http.Response
 		httpResponse, err = s3.run(req, resp)
 		if resp == nil && httpResponse != nil {
 			httpResponse.Body.Close()
+		}
+
+		if err == nil && httpResponse != nil {
+			statusCode = httpResponse.StatusCode
 		}
 
 		if err == nil {
@@ -1018,13 +1029,13 @@ func (s3 *S3) query(req *request, resp interface{}) error {
 				sseRespValue := GetHeaderSSE(httpResponse.Header)
 				if sseRespValue != sseReqValue {
 					// S3 didn't return matching SSE response so the requested encryption didn't happen
-					return fmt.Errorf("S3 did not honor encryption request: expected x-amz-server-side-encryption response header value %q but got %q",
+					return 0, fmt.Errorf("S3 did not honor encryption request: expected x-amz-server-side-encryption response header value %q but got %q",
 						sseReqValue, sseRespValue)
 				}
 			}
 		}
 	}
-	return err
+	return statusCode, err
 }
 
 // prepare sets up req to be delivered to S3.
