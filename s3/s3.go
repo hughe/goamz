@@ -1065,7 +1065,7 @@ func (s3 *S3) queryWithStatus(req *request, resp interface{}) (int, error) {
 				sseKmsRespValue := GetHeaderSSEKMSId(httpResponse.Header)
 				if sseKmsRespValue != sseKmsReqValue {
 					// S3 didn't return matching SSE response so the requested encryption didn't happen
-					return fmt.Errorf("S3 did not honor encryption request: expected x-amz-server-side-encryption-aws-kms-key-id response header value %q but got %q",
+					return 0, fmt.Errorf("S3 did not honor encryption request: expected x-amz-server-side-encryption-aws-kms-key-id response header value %q but got %q",
 						sseKmsReqValue, sseKmsRespValue)
 				}
 			}
