@@ -7,6 +7,7 @@
 // Written by Gustavo Niemeyer <gustavo.niemeyer@canonical.com>
 //
 
+// Gavin TODO: Fix up GoAMZ library with these changes
 package s3
 
 import (
@@ -15,17 +16,16 @@ import (
 	"crypto/hmac"
 	"crypto/md5"
 	"crypto/sha1"
-	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/xml"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"net/textproto"
 	"net/url"
 	"strconv"
@@ -106,6 +106,8 @@ type Owner struct {
 //
 type Options struct {
 	SSE              bool
+	SSEKMS           bool
+	SSEKMSKeyID      string
 	Meta             map[string][]string
 	ContentEncoding  string
 	CacheControl     string
@@ -511,10 +513,32 @@ func (b *Bucket) doPutReaderHeaderTimeout(ctx context.Context, path string, r io
 }
 
 const sseHeaderKey = "x-amz-server-side-encryption"
+const sseKMSKeyIDHeader = "x-amz-server-side-encryption-aws-kms-key-id"
 
 // Adds a header value to the specified set of headers to request server-side encryption.
 func AddHeaderSSE(headers map[string][]string) {
 	headers[textproto.CanonicalMIMEHeaderKey(sseHeaderKey)] = []string{"AES256"}
+}
+
+// Adds a header value to the specified set of headers to request server-side encryption with KMS.
+func AddHeaderSSEKMS(headers map[string][]string, kmsKeyId string) {
+	headers[textproto.CanonicalMIMEHeaderKey(sseHeaderKey)] = []string{"aws:kms"}
+	if kmsKeyId != "" {
+		headers[textproto.CanonicalMIMEHeaderKey(sseKMSKeyIDHeader)] = []string{kmsKeyId}
+	}
+}
+
+// Returns the header value for server-side encryption, or empty string if there is no SSE header.
+func GetHeaderSSEKMSId(headers map[string][]string) string {
+	// Headers returned in an HTTP response will have their key names connonicalized by the Go
+	// http library, so we MUST run the key through textproto.CanonicalMIMEHeaderKey in order
+	// to find it in the map
+	// So headers in the http request must also have been added with a cannonicalized key to find them.
+	// TODO: Change parameters in this file to use http.Header data type rather than map[string][]string
+	if val := headers[textproto.CanonicalMIMEHeaderKey(sseKMSKeyIDHeader)]; len(val) > 0 {
+		return val[0]
+	}
+	return ""
 }
 
 // Returns the header value for server-side encryption, or empty string if there is no SSE header.
@@ -534,6 +558,9 @@ func GetHeaderSSE(headers map[string][]string) string {
 func (o Options) addHeaders(headers map[string][]string) {
 	if o.SSE {
 		AddHeaderSSE(headers)
+	}
+	if o.SSEKMS {
+		AddHeaderSSEKMS(headers, o.SSEKMSKeyID)
 	}
 	if len(o.ContentEncoding) != 0 {
 		headers["Content-Encoding"] = []string{o.ContentEncoding}
@@ -1033,6 +1060,15 @@ func (s3 *S3) queryWithStatus(req *request, resp interface{}) (int, error) {
 						sseReqValue, sseRespValue)
 				}
 			}
+			// SSE KMS ID checking
+			if sseKmsReqValue := GetHeaderSSEKMSId(req.headers); sseKmsReqValue != "" {
+				sseKmsRespValue := GetHeaderSSEKMSId(httpResponse.Header)
+				if sseKmsRespValue != sseKmsReqValue {
+					// S3 didn't return matching SSE response so the requested encryption didn't happen
+					return 0, fmt.Errorf("S3 did not honor encryption request: expected x-amz-server-side-encryption-aws-kms-key-id response header value %q but got %q",
+						sseKmsReqValue, sseKmsRespValue)
+				}
+			}
 		}
 	}
 	return statusCode, err
@@ -1040,71 +1076,71 @@ func (s3 *S3) queryWithStatus(req *request, resp interface{}) (int, error) {
 
 // prepare sets up req to be delivered to S3.
 func (s3 *S3) prepare(req *request) error {
-	var signpath = req.path
+	// Copy so they can be mutated without affecting on retries.
+	params := make(url.Values)
+	headers := make(http.Header)
+	for k, v := range req.params {
+		params[k] = v
+	}
+	for k, v := range req.headers {
+		headers[k] = v
+	}
+	req.params = params
+	req.headers = headers
 
 	if !req.prepared {
 		req.prepared = true
 		if req.method == "" {
 			req.method = "GET"
 		}
-		// Copy so they can be mutated without affecting on retries.
-		params := make(url.Values)
-		headers := make(http.Header)
-		for k, v := range req.params {
-			params[k] = v
-		}
-		for k, v := range req.headers {
-			headers[k] = v
-		}
-		req.params = params
-		req.headers = headers
+
 		if !strings.HasPrefix(req.path, "/") {
 			req.path = "/" + req.path
 		}
-		signpath = req.path
 
-		if req.bucket == "" && req.baseurl == "" {
-			req.baseurl = s3.Region.S3Endpoint
-		}
-
-		if req.bucket != "" {
-			req.baseurl = s3.Region.S3BucketEndpoint
-			if req.baseurl == "" {
-				// Use the path method to address the bucket.
-				req.baseurl = s3.Region.S3Endpoint
-				req.path = "/" + req.bucket + req.path
-			} else {
-				// Just in case, prevent injection.
-				if strings.IndexAny(req.bucket, "/:@") >= 0 {
-					return fmt.Errorf("bad S3 bucket: %q", req.bucket)
-				}
-				req.baseurl = strings.Replace(req.baseurl, "${bucket}", req.bucket, -1)
-			}
-			signpath = "/" + req.bucket + signpath
+		err := s3.setBaseURL(req)
+		if err != nil {
+			return err
 		}
 	}
 
-	// Always sign again as it's not clear how far the
-	// server has handled a previous attempt.
-	u, err := url.Parse(req.baseurl)
-	if err != nil {
-		return fmt.Errorf("bad S3 endpoint URL %q: %v", req.baseurl, err)
-	}
-	reqSignpathSpaceFix := (&url.URL{Path: signpath}).String()
-	req.headers["Host"] = []string{u.Host}
-
-	// Use GMT instead of UTC as the time zone.
-	// All the examples in the S3 documentation use GMT.
-	// Some S3-compatible storage providers (e.g Cloudian) require GMT
-	// rather than UTC (as of June 2015)
-	gmtDate := time.Now().In(time.FixedZone("GMT", 0)).Format(time.RFC1123)
-	req.headers["Date"] = []string{gmtDate}
-
-	if s3.Auth.Token() != "" {
+	if !s3.v4sign && s3.Auth.Token() != "" {
 		req.headers["X-Amz-Security-Token"] = []string{s3.Auth.Token()}
+	} else if s3.Auth.Token() != "" {
+		req.params.Set("X-Amz-Security-Token", s3.Auth.Token())
 	}
-	if !s3.v4sign {
-		sign(s3.Auth, req.method, reqSignpathSpaceFix, req.params, req.headers)
+
+	if !s3.v4sign { //v2
+		// Always sign again as it's not clear how far the
+		// server has handled a previous attempt.
+		u, err := url.Parse(req.baseurl)
+		if err != nil {
+			return err
+		}
+
+		signpathPartiallyEscaped := partiallyEscapedPath(req.path)
+		if strings.IndexAny(s3.Region.S3BucketEndpoint, "${bucket}") >= 0 {
+			signpathPartiallyEscaped = "/" + req.bucket + signpathPartiallyEscaped
+		}
+		req.headers["Host"] = []string{u.Host}
+		req.headers["Date"] = []string{time.Now().In(time.UTC).Format(time.RFC1123)}
+
+		sign(s3.Auth, req.method, signpathPartiallyEscaped, req.params, req.headers)
+	} else {
+		hreq, err := s3.setupHttpRequest(req)
+		if err != nil {
+			return err
+		}
+
+		hreq.Host = hreq.URL.Host
+		signer := NewV4Signer(s3.Auth, "s3", s3.Region)
+		signer.IncludeXAmzContentSha256 = true
+		signer.Sign(hreq)
+
+		req.payload = hreq.Body
+		if _, ok := headers["Content-Length"]; ok {
+			req.headers["Content-Length"] = headers["Content-Length"]
+		}
 	}
 	return nil
 }
@@ -1113,6 +1149,9 @@ func (s3 *S3) prepare(req *request) error {
 // If resp is not nil, the XML data contained in the response
 // body will be unmarshalled on it.
 func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
+	if Debug {
+		log.Printf("Running S3 request: %#v", req)
+	}
 	u, err := req.url()
 	if err != nil {
 		return nil, err
@@ -1125,152 +1164,143 @@ func (s3 *S3) run(req *request, resp interface{}) (*http.Response, error) {
 		if err != nil {
 			return nil, err
 		}
-	} else {
-		hreq = &http.Request{
-			URL:        u,
-			Host:       u.Host,
-			Method:     req.method,
-			ProtoMajor: 1,
-			ProtoMinor: 1,
-			Header:     req.headers,
+
+		if v, ok := req.headers["Content-Length"]; ok {
+			hreq.ContentLength, _ = strconv.ParseInt(v[0], 10, 64)
+			delete(req.headers, "Content-Length")
 		}
+		if req.payload != nil {
+			hreq.Body = ioutil.NopCloser(req.payload)
+		}
+	} else {
+		hreq, err = s3.setupHttpRequest(req)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return s3.doHttpRequest(hreq, resp)
+}
+
+// Sets baseurl on req from bucket name and the region endpoint
+func (s3 *S3) setBaseURL(req *request) error {
+	if req.bucket == "" {
+		req.baseurl = s3.Region.S3Endpoint
+	} else {
+		req.baseurl = s3.Region.S3BucketEndpoint
+		if req.baseurl == "" {
+			// Use the path method to address the bucket.
+			req.baseurl = s3.Region.S3Endpoint
+			req.path = "/" + req.bucket + req.path
+		} else {
+			// Just in case, prevent injection.
+			if strings.IndexAny(req.bucket, "/:@") >= 0 {
+				return fmt.Errorf("bad S3 bucket: %q", req.bucket)
+			}
+			req.baseurl = strings.Replace(req.baseurl, "${bucket}", req.bucket, -1)
+		}
+	}
+
+	return nil
+}
+
+// doHttpRequest sends hreq and returns the http response from the server.
+// If resp is not nil, the XML data contained in the response
+// body will be unmarshalled on it.
+func (s3 *S3) doHttpRequest(hreq *http.Request, resp interface{}) (*http.Response, error) {
+	c := http.Client{
+		Transport: &http.Transport{
+			Dial: func(netw, addr string) (c net.Conn, err error) {
+				deadline := time.Now().Add(s3.ReadTimeout)
+				if s3.ConnectTimeout > 0 {
+					c, err = net.DialTimeout(netw, addr, s3.ConnectTimeout)
+				} else {
+					c, err = net.Dial(netw, addr)
+				}
+				if err != nil {
+					return
+				}
+				if s3.ReadTimeout > 0 {
+					err = c.SetDeadline(deadline)
+				}
+				return
+			},
+			Proxy: http.ProxyFromEnvironment,
+		},
+	}
+
+	hresp, err := c.Do(hreq)
+	if err != nil {
+		return nil, err
+	}
+	if Debug {
+		dump, _ := httputil.DumpResponse(hresp, true)
+		log.Printf("} -> %s\n", dump)
+	}
+	if hresp.StatusCode != 200 && hresp.StatusCode != 204 && hresp.StatusCode != 206 {
+		return nil, buildError(hresp)
+	}
+	if resp != nil {
+		err = xml.NewDecoder(hresp.Body).Decode(resp)
+		hresp.Body.Close()
+
+		if Debug {
+			log.Printf("goamz.s3> decoded xml into %#v", resp)
+		}
+
+	}
+	return hresp, err
+}
+
+func partiallyEscapedPath(path string) string {
+	pathEscapedAndSplit := strings.Split((&url.URL{Path: path}).String(), "/")
+	if len(pathEscapedAndSplit) >= 3 {
+		if len(pathEscapedAndSplit[2]) >= 3 {
+			// Check for the one "?" that should not be escaped.
+			if pathEscapedAndSplit[2][0:3] == "%3F" {
+				pathEscapedAndSplit[2] = "?" + pathEscapedAndSplit[2][3:]
+			}
+		}
+	}
+	return strings.Replace(strings.Join(pathEscapedAndSplit, "/"), "+", "%2B", -1)
+}
+
+// Prepares an *http.Request for doHttpRequest
+func (s3 *S3) setupHttpRequest(req *request) (*http.Request, error) {
+	// Copy so that signing the http request will not mutate it
+	headers := make(http.Header)
+	for k, v := range req.headers {
+		headers[k] = v
+	}
+	req.headers = headers
+
+	u, err := req.url()
+	if err != nil {
+		return nil, err
+	}
+	if s3.Region.Name != "generic" {
+		u.Opaque = fmt.Sprintf("//%s%s", u.Host, partiallyEscapedPath(u.Path))
+	}
+
+	hreq := http.Request{
+		URL:        u,
+		Method:     req.method,
+		ProtoMajor: 1,
+		ProtoMinor: 1,
+		Close:      true,
+		Header:     req.headers,
+		Form:       req.params,
 	}
 
 	if v, ok := req.headers["Content-Length"]; ok {
 		hreq.ContentLength, _ = strconv.ParseInt(v[0], 10, 64)
 		delete(req.headers, "Content-Length")
 	}
-
 	if req.payload != nil {
 		hreq.Body = ioutil.NopCloser(req.payload)
 	}
 
-	if s3.v4sign {
-		s3.signer.Sign(hreq)
-	}
-
-	var httpClient *http.Client
-	if s3.client != nil {
-		// This is the preferred option as constructing a client/transport for every
-		// request is generally a bad idea.
-		httpClient = s3.client
-
-		// When using a user-supplied http client we don't want to mess with the
-		// underlying transport/net.Conn (as we want connection pooling) so use
-		// contexts to achieve a per-request timeout.
-		if req.timeout != 0 {
-			return nil, errors.New("Timeouts must be specified using contexts when " +
-				"using a custom HTTP client.")
-		}
-
-		if req.context != nil {
-			hreq = hreq.WithContext(req.context)
-		}
-	} else {
-		// Close should be set to true here as the logic below constructs a transport
-		// for every http request so connection pooling doesn't work.
-		// We can at least be kind to the down stream server by letting them know
-		// we won't be reusing the connection. This code should be yanked a some point.
-		hreq.Close = true
-
-		if req.context != nil {
-			return nil, errors.New("Contexts are not supported when using the internal HTTP client.")
-		}
-
-		httpClient = &http.Client{
-			Transport: &http.Transport{
-				Proxy: http.ProxyFromEnvironment,
-				TLSClientConfig: &tls.Config{
-					MinVersion: tls.VersionTLS10,
-					RootCAs:    s3.rootCAs, // nil means use the host's root CA set
-				},
-				Dial: func(netw, addr string) (c net.Conn, err error) {
-					c, err = net.DialTimeout(netw, addr, s3.ConnectTimeout)
-					if err != nil {
-						return
-					}
-
-					// The timeout for this request, defaults to s3.RequestTimeout
-					var thisRequestTimeout time.Duration
-
-					// If there is a timeout set on the req, use that instead.
-					if req.timeout != 0 {
-						thisRequestTimeout = req.timeout
-					} else {
-						thisRequestTimeout = s3.RequestTimeout
-					}
-
-					var deadline time.Time
-					if thisRequestTimeout > 0 {
-						deadline = time.Now().Add(thisRequestTimeout)
-						c.SetDeadline(deadline)
-
-						if Debug {
-							log.Printf("Set RequestTimeout: %s", thisRequestTimeout)
-						}
-					}
-
-					if s3.ReadTimeout > 0 || s3.WriteTimeout > 0 {
-						c = &ioTimeoutConn{
-							TCPConn:         c.(*net.TCPConn),
-							readTimeout:     s3.ReadTimeout,
-							writeTimeout:    s3.WriteTimeout,
-							requestDeadline: deadline,
-						}
-					}
-					return
-				},
-				TLSHandshakeTimeout: 10 * time.Second,
-			},
-		}
-	}
-
-	if Debug {
-		log.Printf("%s GoAMZ Running S3 Request: %s %s %s",
-			time.Now().UTC().Format("2006/01/02 15:04:05.000"),
-			hreq.Method, hreq.URL, hreq.Header)
-	}
-
-	startTime := time.Now()
-	hresp, err := httpClient.Do(hreq)
-	dt := time.Since(startTime)
-
-	srLog := func(ierr error) {
-		if SRRequestLogger != nil {
-			SRRequestLogger(req.context, hreq, hresp, dt, ierr)
-		}
-	}
-
-	if err != nil {
-		srLog(err)
-		return nil, err
-	}
-
-	if Debug {
-		log.Printf("%s GoAMZ Response to S3 Request: %s %s %s %s %s %#v",
-			time.Now().UTC().Format("2006/01/02 15:04:05.000"),
-			hreq.Method, hreq.URL, dt, hresp.Status, hresp.Header, err)
-	}
-
-	// Allow for any 2xx series status code; else, build an error.s
-	if hresp.StatusCode < 200 || hresp.StatusCode >= 300 {
-		defer hresp.Body.Close()
-		err = buildError(hresp)
-		srLog(err)
-		return nil, err
-	}
-
-	if resp != nil {
-		err = xml.NewDecoder(hresp.Body).Decode(resp)
-		hresp.Body.Close()
-		if Debug {
-			log.Printf("goamz.s3> decoded xml into %#v", resp)
-		}
-	}
-
-	srLog(err)
-
-	return hresp, err
+	return &hreq, nil
 }
 
 // Error represents an error in an operation with S3.

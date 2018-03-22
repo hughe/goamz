@@ -59,18 +59,43 @@ Any changes to the request after signing the request will invalidate the signatu
 */
 func (s *V4Signer) Sign(req *http.Request) {
 	req.Header.Set("host", req.Host) // host header must be included as a signed header
-	payloadHash := s.payloadHash(req)
-	if s.IncludeXAmzContentSha256 {
-		req.Header.Set("x-amz-content-sha256", payloadHash) // x-amz-content-sha256 contains the payload hash
+	t := s.requestTime(req)          // Get request time
+
+	payloadHash := ""
+
+	if _, ok := req.Form["X-Amz-Expires"]; ok {
+		// We are authenticating the the request by using query params
+		// (also known as pre-signing a url, http://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-query-string-auth.html)
+		payloadHash = "UNSIGNED-PAYLOAD"
+		req.Header.Del("x-amz-date")
+
+		req.Form["X-Amz-SignedHeaders"] = []string{s.signedHeaders(req.Header)}
+		req.Form["X-Amz-Algorithm"] = []string{"AWS4-HMAC-SHA256"}
+		req.Form["X-Amz-Credential"] = []string{s.auth.AccessKey + "/" + s.credentialScope(t)}
+		req.Form["X-Amz-Date"] = []string{t.Format(ISO8601BasicFormat)}
+		req.URL.RawQuery = req.Form.Encode()
+	} else {
+		payloadHash = s.payloadHash(req)
+		if s.IncludeXAmzContentSha256 {
+			req.Header.Set("x-amz-content-sha256", payloadHash) // x-amz-content-sha256 contains the payload hash
+		}
 	}
-	t := s.requestTime(req)                           // Get request time
 	creq := s.canonicalRequest(req, payloadHash)      // Build canonical request
 	sts := s.stringToSign(t, creq)                    // Build string to sign
 	signature := s.signature(t, sts)                  // Calculate the AWS Signature Version 4
 	auth := s.authorization(req.Header, t, signature) // Create Authorization header value
-	req.Header.Set("Authorization", auth)             // Add Authorization header to request
 
+	if _, ok := req.Form["X-Amz-Expires"]; ok {
+		req.Form["X-Amz-Signature"] = []string{signature}
+	} else {
+		req.Header.Set("Authorization", auth) // Add Authorization header to request
+	}
 	return
+}
+
+func (s *V4Signer) SignRequest(req *http.Request) error {
+	s.Sign(req)
+	return nil
 }
 
 /*
@@ -83,6 +108,7 @@ func (s *V4Signer) requestTime(req *http.Request) time.Time {
 
 	// Get "x-amz-date" header
 	date := req.Header.Get("x-amz-date")
+
 	// Attempt to parse as ISO8601BasicFormat
 	t, err := time.Parse(ISO8601BasicFormat, date)
 	if err == nil {
@@ -102,7 +128,6 @@ func (s *V4Signer) requestTime(req *http.Request) time.Time {
 	// Attempt to parse as http.TimeFormat
 	t, err = time.Parse(http.TimeFormat, date)
 	if err == nil {
-		req.Header.Set("x-amz-date", t.Format(ISO8601BasicFormat))
 		return t
 	}
 
@@ -140,38 +165,77 @@ func (s *V4Signer) canonicalRequest(req *http.Request, payloadHash string) strin
 }
 
 func (s *V4Signer) canonicalURI(u *url.URL) string {
-	canonicalPath := u.RequestURI()
-	if u.RawQuery != "" {
-		canonicalPath = canonicalPath[:len(canonicalPath)-len(u.RawQuery)-1]
-	}
+	u = &url.URL{Path: u.Path}
+	canonicalPath := u.String()
+
 	slash := strings.HasSuffix(canonicalPath, "/")
 	canonicalPath = path.Clean(canonicalPath)
+
+	if canonicalPath == "" || canonicalPath == "." {
+		canonicalPath = "/"
+	}
+
 	if canonicalPath != "/" && slash {
 		canonicalPath += "/"
 	}
+
 	return canonicalPath
 }
 
 func (s *V4Signer) canonicalQueryString(u *url.URL) string {
-	var a []string
+	keyValues := make(map[string]string, len(u.Query()))
+	keys := make([]string, len(u.Query()))
+
+	key_i := 0
 	for k, vs := range u.Query() {
 		k = url.QueryEscape(k)
-		for _, v := range vs {
-			if v == "" {
-				a = append(a, k+"=")
-			} else {
-				v = url.QueryEscape(v)
-				a = append(a, k+"="+v)
-			}
+
+		a := make([]string, len(vs))
+		for idx, v := range vs {
+			v = url.QueryEscape(v)
+			a[idx] = fmt.Sprintf("%s=%s", k, v)
 		}
+
+		keyValues[k] = strings.Join(a, "&")
+		keys[key_i] = k
+		key_i++
 	}
-	sort.Strings(a)
-	return strings.Join(a, "&")
+
+	sort.Strings(keys)
+
+	query := make([]string, len(keys))
+	for idx, key := range keys {
+		query[idx] = keyValues[key]
+	}
+
+	query_str := strings.Join(query, "&")
+
+	// AWS V4 signing requires that the space characters
+	// are encoded as %20 instead of +. On the other hand
+	// golangs url.QueryEscape as well as url.Values.Encode()
+	// both encode the space as a + character. See:
+	// http://docs.aws.amazon.com/general/latest/gr/sigv4-create-canonical-request.html
+	// https://github.com/golang/go/issues/4013
+	// https://groups.google.com/forum/#!topic/golang-nuts/BB443qEjPIk
+
+	return strings.Replace(query_str, "+", "%20", -1)
 }
 
 func (s *V4Signer) canonicalHeaders(h http.Header) string {
-	i, a := 0, make([]string, len(h))
+	i, a, lowerCase := 0, make([]string, len(h)), make(map[string][]string)
+
 	for k, v := range h {
+		lowerCase[strings.ToLower(k)] = v
+	}
+
+	var keys []string
+	for k := range lowerCase {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		v := lowerCase[k]
 		for j, w := range v {
 			v[j] = strings.Trim(w, " ")
 		}
@@ -179,7 +243,6 @@ func (s *V4Signer) canonicalHeaders(h http.Header) string {
 		a[i] = strings.ToLower(k) + ":" + strings.Join(v, ",")
 		i++
 	}
-	sort.Strings(a)
 	return strings.Join(a, "\n")
 }
 
@@ -194,19 +257,18 @@ func (s *V4Signer) signedHeaders(h http.Header) string {
 }
 
 func (s *V4Signer) payloadHash(req *http.Request) string {
-	// NOTE: do not reassign the body if it is nil - it breaks the go 1.8 http
-	// client's content-length logic. If it sees a body populated, but
-	// content-length is 0, it will assume transfer encoding chunked.
-	b := []byte{}
-	if req.Body != nil {
+	var b []byte
+	if req.Body == nil {
+		b = []byte("")
+	} else {
 		var err error
 		b, err = ioutil.ReadAll(req.Body)
 		if err != nil {
 			// TODO: I REALLY DON'T LIKE THIS PANIC!!!!
 			panic(err)
 		}
-		req.Body = ioutil.NopCloser(bytes.NewBuffer(b))
 	}
+	req.Body = ioutil.NopCloser(bytes.NewBuffer(b))
 	return s.hash(string(b))
 }
 
@@ -235,7 +297,7 @@ func (s *V4Signer) credentialScope(t time.Time) string {
 /*
 signature method calculates the AWS Signature Version 4 according to Task 3 of the AWS Signature Version 4 Signing Process. (http://goo.gl/j0Yqe1)
 
-    signature = HexEncode(HMAC(derived-signing-key, string-to-sign))
+	signature = HexEncode(HMAC(derived-signing-key, string-to-sign))
 */
 func (s *V4Signer) signature(t time.Time, sts string) string {
 	h := s.hmac(s.derivedKey(t), []byte(sts))
@@ -245,7 +307,7 @@ func (s *V4Signer) signature(t time.Time, sts string) string {
 /*
 derivedKey method derives a signing key to be used for signing a request.
 
-    kSecret = Your AWS Secret Access Key
+	kSecret = Your AWS Secret Access Key
     kDate = HMAC("AWS4" + kSecret, Date)
     kRegion = HMAC(kDate, Region)
     kService = HMAC(kRegion, Service)

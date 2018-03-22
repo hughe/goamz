@@ -28,7 +28,9 @@ type Multi struct {
 
 // Options that can be passed in when initiating a multipart upload.
 type MultiOptions struct {
-	SSE bool // true to require server-side encryption
+	SSE         bool // true to require server-side encryption
+	SSEKMS      bool
+	SSEKMSKeyID string
 }
 
 // That's the default. Here just for testing.
