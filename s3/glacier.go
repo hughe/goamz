@@ -150,7 +150,7 @@ func (b *Bucket) GetRestoreStatus(key string) (status RestoreStatus, err error) 
 }
 
 func (r *RestoreStatus) SetFromHeader(h http.Header) (err error) {
-	sc := resp.Header.Get("X-Amz-Storage-Class")
+	sc := h.Get("X-Amz-Storage-Class")
 
 	if sc == "" {
 		r.StorageClass = STANDARD
@@ -158,7 +158,7 @@ func (r *RestoreStatus) SetFromHeader(h http.Header) (err error) {
 		r.StorageClass = sc
 	}
 
-	rs := resp.Header.Get("X-Amz-Restore")
+	rs := h.Get("X-Amz-Restore")
 
 	if rs != "" {
 		err = r.ParseAmzRestore(rs)
