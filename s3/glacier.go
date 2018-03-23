@@ -106,7 +106,7 @@ func (r RestoreStatus) HasBeenRestored() bool {
 	return false
 }
 
-var restoreRe = regexp.MustCompile(`ongoing-request="(true|false)"(, expiry-date="([^"]*)")?`)
+var restoreRe = regexp.MustCompile(`^ongoing-request="(true|false)"(, expiry-date="([^"]*)")?$`)
 
 func (r *RestoreStatus) ParseAmzRestore(s string) (err error) {
 	c := restoreRe.Copy()
