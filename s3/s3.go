@@ -106,6 +106,8 @@ type Owner struct {
 //
 type Options struct {
 	SSE              bool
+	SSEKMS           bool
+	SSEKMSKeyID      string
 	Meta             map[string][]string
 	ContentEncoding  string
 	CacheControl     string
@@ -511,10 +513,32 @@ func (b *Bucket) doPutReaderHeaderTimeout(ctx context.Context, path string, r io
 }
 
 const sseHeaderKey = "x-amz-server-side-encryption"
+const sseKMSKeyIDHeader = "x-amz-server-side-encryption-aws-kms-key-id"
 
 // Adds a header value to the specified set of headers to request server-side encryption.
 func AddHeaderSSE(headers map[string][]string) {
 	headers[textproto.CanonicalMIMEHeaderKey(sseHeaderKey)] = []string{"AES256"}
+}
+
+// Adds a header value to the specified set of headers to request server-side encryption with KMS.
+func AddHeaderSSEKMS(headers map[string][]string, kmsKeyId string) {
+	headers[textproto.CanonicalMIMEHeaderKey(sseHeaderKey)] = []string{"aws:kms"}
+	if kmsKeyId != "" {
+		headers[textproto.CanonicalMIMEHeaderKey(sseKMSKeyIDHeader)] = []string{kmsKeyId}
+	}
+}
+
+// Returns the header value for server-side encryption, or empty string if there is no SSE header.
+func GetHeaderSSEKMSId(headers map[string][]string) string {
+	// Headers returned in an HTTP response will have their key names connonicalized by the Go
+	// http library, so we MUST run the key through textproto.CanonicalMIMEHeaderKey in order
+	// to find it in the map
+	// So headers in the http request must also have been added with a cannonicalized key to find them.
+	// TODO: Change parameters in this file to use http.Header data type rather than map[string][]string
+	if val := headers[textproto.CanonicalMIMEHeaderKey(sseKMSKeyIDHeader)]; len(val) > 0 {
+		return val[0]
+	}
+	return ""
 }
 
 // Returns the header value for server-side encryption, or empty string if there is no SSE header.
@@ -534,6 +558,9 @@ func GetHeaderSSE(headers map[string][]string) string {
 func (o Options) addHeaders(headers map[string][]string) {
 	if o.SSE {
 		AddHeaderSSE(headers)
+	}
+	if o.SSEKMS {
+		AddHeaderSSEKMS(headers, o.SSEKMSKeyID)
 	}
 	if len(o.ContentEncoding) != 0 {
 		headers["Content-Encoding"] = []string{o.ContentEncoding}
@@ -1031,6 +1058,15 @@ func (s3 *S3) queryWithStatus(req *request, resp interface{}) (int, error) {
 					// S3 didn't return matching SSE response so the requested encryption didn't happen
 					return 0, fmt.Errorf("S3 did not honor encryption request: expected x-amz-server-side-encryption response header value %q but got %q",
 						sseReqValue, sseRespValue)
+				}
+			}
+			// SSE KMS ID checking
+			if sseKmsReqValue := GetHeaderSSEKMSId(req.headers); sseKmsReqValue != "" {
+				sseKmsRespValue := GetHeaderSSEKMSId(httpResponse.Header)
+				if sseKmsRespValue != sseKmsReqValue {
+					// S3 didn't return matching SSE response so the requested encryption didn't happen
+					return 0, fmt.Errorf("S3 did not honor encryption request: expected x-amz-server-side-encryption-aws-kms-key-id response header value %q but got %q",
+						sseKmsReqValue, sseKmsRespValue)
 				}
 			}
 		}
