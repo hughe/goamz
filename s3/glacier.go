@@ -101,7 +101,7 @@ func (r RestoreStatus) IsBeingRestored() bool {
 
 func (r RestoreStatus) HasBeenRestored() bool {
 	if !r.OnGoingRequest {
-		return r.ExpiryDate.IsZero()
+		return !r.ExpiryDate.IsZero()
 	}
 	return false
 }
