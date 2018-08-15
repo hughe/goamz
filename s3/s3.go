@@ -711,6 +711,26 @@ type ListResp struct {
 	CommonPrefixes []string `xml:">Prefix"`
 }
 
+// The ListRespV2 type holds the results of a List bucket operation version 2.
+type ListRespV2 struct {
+	Name                  string
+	Prefix                string
+	Delimiter             string
+	ContinuationToken     string
+	NextContinuationToken string
+	MaxKeys               int
+	KeyCount              int
+	StartAfter            string
+
+	// IsTruncated is true if the results have been truncated because
+	// there are more keys and prefixes than can fit in MaxKeys.
+	// N.B. this is the opposite sense to that documented (incorrectly) in
+	// http://goo.gl/YjQTc
+	IsTruncated    bool
+	Contents       []Key
+	CommonPrefixes []string `xml:">Prefix"`
+}
+
 // The Key type represents an item stored in an S3 bucket.
 type Key struct {
 	Key          string
@@ -789,6 +809,37 @@ func (b *Bucket) List(prefix, delim, marker string, max int) (result *ListResp, 
 		params["max-keys"] = []string{strconv.FormatInt(int64(max), 10)}
 	}
 	result = &ListResp{}
+	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(err); {
+		req := &request{
+			bucket: b.Name,
+			params: params,
+		}
+		err = b.S3.query(req, result)
+		if !ShouldRetry(err) {
+			break
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (b *Bucket) ListV2(prefix, delim, continuationToken string, max int, startAfter string) (result *ListRespV2, err error) {
+	params := map[string][]string{
+		"prefix":    {prefix},
+		"delimiter": {delim},
+	}
+	if continuationToken != "" {
+		params["continuation-token"] = []string{continuationToken}
+	}
+	if startAfter != "" {
+		params["start-after"] = []string{startAfter}
+	}
+	if max != 0 {
+		params["max-keys"] = []string{strconv.FormatInt(int64(max), 10)}
+	}
+	result = &ListRespV2{}
 	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(err); {
 		req := &request{
 			bucket: b.Name,
