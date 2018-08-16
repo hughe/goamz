@@ -825,8 +825,9 @@ func (b *Bucket) List(prefix, delim, marker string, max int) (result *ListResp, 
 	return result, nil
 }
 
-func (b *Bucket) ListV2(prefix, delim, continuationToken string, max int, startAfter string) (result *ListRespV2, err error) {
+func (b *Bucket) ListV2(prefix, delim, continuationToken, startAfter string, max int, fetch_owner bool) (result *ListRespV2, err error) {
 	params := map[string][]string{
+		"list-type": []string{"2"},
 		"prefix":    {prefix},
 		"delimiter": {delim},
 	}
@@ -838,6 +839,9 @@ func (b *Bucket) ListV2(prefix, delim, continuationToken string, max int, startA
 	}
 	if max != 0 {
 		params["max-keys"] = []string{strconv.FormatInt(int64(max), 10)}
+	}
+	if fetch_owner {
+		params["fetch-owner"] = []string{"true"}
 	}
 	result = &ListRespV2{}
 	for attempt := b.S3.AttemptStrategy.Start(); attempt.Next(err); {
