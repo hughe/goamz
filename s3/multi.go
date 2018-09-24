@@ -132,8 +132,8 @@ func (b *Bucket) InitMultiWithOptions(key string, contType string, perm ACL, opt
 	headers := map[string][]string{
 		"Content-Type":   {contType},
 		"Content-Length": {"0"},
-		"x-amz-acl":      {string(perm)},
 	}
+	addACLHeader(headers, perm)
 	if options.SSE {
 		AddHeaderSSE(headers)
 	}

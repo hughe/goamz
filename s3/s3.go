@@ -205,6 +205,7 @@ func (s3 *S3) locationConstraint() io.Reader {
 type ACL string
 
 const (
+	NoACL             = ACL("no-acl-specified") // special value meaning do not send an x-amz-acl header
 	Private           = ACL("private")
 	PublicRead        = ACL("public-read")
 	PublicReadWrite   = ACL("public-read-write")
@@ -213,13 +214,21 @@ const (
 	BucketOwnerFull   = ACL("bucket-owner-full-control")
 )
 
+// Adds an x-amz-acl header for the specified permission to the given set of headers.
+// If the permission is empty or is 'NoACL' then no header is added.
+func addACLHeader(headers map[string][]string, perm ACL) {
+	if perm != NoACL && perm != "" {
+		headers["x-amz-acl"] = []string{string(perm)}
+	}
+}
+
 // PutBucket creates a new bucket.
 //
 // See http://goo.gl/ndjnR for details.
 func (b *Bucket) PutBucket(perm ACL) error {
-	headers := map[string][]string{
-		"x-amz-acl": {string(perm)},
-	}
+	headers := make(map[string][]string)
+	addACLHeader(headers, perm)
+
 	req := &request{
 		method:  "PUT",
 		bucket:  b.Name,
@@ -425,9 +434,10 @@ func (b *Bucket) Put(path string, data []byte, contType string, perm ACL, option
 // PutCopy puts a copy of an object given by the key path into bucket b using b.Path as the target key
 func (b *Bucket) PutCopy(path string, perm ACL, options CopyOptions, source string) (*CopyObjectResult, error) {
 	headers := map[string][]string{
-		"x-amz-acl":         {string(perm)},
 		"x-amz-copy-source": {source},
 	}
+	addACLHeader(headers, perm)
+
 	options.addHeaders(headers)
 	req := &request{
 		method:  "PUT",
@@ -458,8 +468,9 @@ func (b *Bucket) PutReader(path string, r io.Reader, length int64, contType stri
 	headers := map[string][]string{
 		"Content-Length": {strconv.FormatInt(length, 10)},
 		"Content-Type":   {contType},
-		"x-amz-acl":      {string(perm)},
 	}
+	addACLHeader(headers, perm)
+
 	options.addHeaders(headers)
 	req := &request{
 		method:  "PUT",
@@ -492,8 +503,8 @@ func (b *Bucket) doPutReaderHeaderTimeout(ctx context.Context, path string, r io
 	headers := map[string][]string{
 		"Content-Length": {strconv.FormatInt(length, 10)},
 		"Content-Type":   {"application/text"},
-		"x-amz-acl":      {string(perm)},
 	}
+	addACLHeader(headers, perm)
 
 	// Override with custom headers
 	for key, value := range customHeaders {
