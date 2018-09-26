@@ -217,7 +217,7 @@ const (
 // Adds an x-amz-acl header for the specified permission to the given set of headers.
 // If the permission is empty or is 'NoACL' then no header is added.
 func addACLHeader(headers map[string][]string, perm ACL) {
-	if perm != NoACL && perm != "" {
+	if perm != NoACL {
 		headers["x-amz-acl"] = []string{string(perm)}
 	}
 }
