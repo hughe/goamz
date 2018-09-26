@@ -193,6 +193,23 @@ func (s *S) TestPutObject(c *C) {
 	c.Assert(req.Header["X-Amz-Acl"], DeepEquals, []string{"private"})
 }
 
+func (s *S) TestPutObjectNoACL(c *C) {
+	testServer.Response(200, nil, "")
+
+	b := s.s3.Bucket("bucket")
+	err := b.Put("name", []byte("content"), "content-type", s3.NoACL, s3.Options{})
+	c.Assert(err, IsNil)
+
+	req := testServer.WaitRequest()
+	c.Assert(req.Method, Equals, "PUT")
+	c.Assert(req.URL.Path, Equals, "/bucket/name")
+	c.Assert(req.Header["Date"], Not(DeepEquals), []string{""})
+	c.Assert(req.Header["Content-Type"], DeepEquals, []string{"content-type"})
+	c.Assert(req.Header["Content-Length"], DeepEquals, []string{"7"})
+	//c.Assert(req.Header["Content-MD5"], DeepEquals, "...")
+	c.Assert(req.Header["X-Amz-Acl"], DeepEquals, []string(nil)) // there should be no X-Amz-Acl header at all
+}
+
 func (s *S) TestPutObjectReadTimeout(c *C) {
 	s.s3.ReadTimeout = 50 * time.Millisecond
 	defer func() {
