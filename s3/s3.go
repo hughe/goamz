@@ -1140,6 +1140,35 @@ func (s3 *S3) queryWithStatus(req *request, resp interface{}) (int, error) {
 	return statusCode, err
 }
 
+type ReturnedBucket struct {
+	Name             string
+	CreationDate     string
+	ClonedBucketName *string `xml:",omitempty"`
+}
+
+// The ListBucketsResp type holds the results of a List buckets operation.
+type ListAllMyBucketsResult struct {
+	XMLName xml.Name `xml:"http://s3.amazonaws.com/doc/2006-03-01/ ListAllMyBucketsResult"`
+	Owner   Owner
+	Buckets []ReturnedBucket `xml:">Bucket"`
+}
+
+// List all buckets at the endpoint
+func (s3 *S3) ListBuckets(endpoint string) (ListAllMyBucketsResult, error) {
+	req := request{
+		method:  "GET",
+		bucket:  "",
+		path:    "/",
+		baseurl: endpoint,
+	}
+
+	s3.prepare(&req)
+
+	var lbresp ListAllMyBucketsResult
+	_, err := s3.run(&req, &lbresp)
+	return lbresp, err
+}
+
 // prepare sets up req to be delivered to S3.
 func (s3 *S3) prepare(req *request) error {
 	var signpath = req.path
