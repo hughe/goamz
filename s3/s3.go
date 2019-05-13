@@ -32,6 +32,8 @@ import (
 	"strings"
 	"time"
 
+	pkgerrors "github.com/pkg/errors"
+
 	"github.com/hughe/goamz/aws"
 )
 
@@ -1574,7 +1576,7 @@ func shouldRetryAlmostAll(err error) bool {
 		err = e.Err
 	}
 
-	if e, ok := err.(*Error); ok {
+	if e, ok := pkgerrors.Cause(err).(*Error); ok {
 		// Error came from S3 (or some proxy)
 		if e.StatusCode < 500 {
 			// Codes < 500 should not be retried except ...
