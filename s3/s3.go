@@ -1539,7 +1539,7 @@ func shouldRetrySpecific(err error) bool {
 		}
 	case *Error:
 		switch e.Code {
-		case "InternalError", "NoSuchUpload", "NoSuchBucket", "RequestTimeout":
+		case "InternalError", "NoSuchUpload", "RequestTimeout":
 			return true
 		}
 
@@ -1580,7 +1580,7 @@ func shouldRetryAlmostAll(err error) bool {
 			// Codes < 500 should not be retried except ...
 
 			switch e.Code {
-			case "InternalError", "NoSuchUpload", "NoSuchBucket", "RequestTimeout":
+			case "InternalError", "NoSuchUpload", "RequestTimeout":
 				return true
 			}
 
